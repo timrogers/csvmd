@@ -33,8 +33,11 @@ cargo build --release
 # Run the CLI tool
 cargo run -- [OPTIONS] [FILE]
 
-# Format code
+# Format code (ALWAYS run before committing)
 cargo fmt
+
+# Check formatting (ensure code is properly formatted)
+cargo fmt --check
 
 # Lint code
 cargo clippy
@@ -42,6 +45,8 @@ cargo clippy
 # Run all tests (unit + integration)
 cargo test
 ```
+
+**Important**: Always run `cargo fmt` before making commits to ensure consistent code formatting. Use `cargo fmt --check` to verify formatting without making changes.
 
 ### Testing
 

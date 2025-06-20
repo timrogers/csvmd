@@ -258,7 +258,11 @@ fn write_table_row_to_writer<W: Write>(
 }
 
 /// Write the header separator line to a string buffer.
-fn write_header_separator(output: &mut String, max_cols: usize, alignment: HeaderAlignment) -> Result<()> {
+fn write_header_separator(
+    output: &mut String,
+    max_cols: usize,
+    alignment: HeaderAlignment,
+) -> Result<()> {
     output.push('|');
 
     let separator = match alignment {
@@ -276,7 +280,11 @@ fn write_header_separator(output: &mut String, max_cols: usize, alignment: Heade
 }
 
 /// Write the header separator line directly to a writer.
-fn write_header_separator_to_writer<W: Write>(output: &mut W, max_cols: usize, alignment: HeaderAlignment) -> Result<()> {
+fn write_header_separator_to_writer<W: Write>(
+    output: &mut W,
+    max_cols: usize,
+    alignment: HeaderAlignment,
+) -> Result<()> {
     write!(output, "|")?;
 
     let separator = match alignment {

@@ -179,7 +179,10 @@ fn main() -> Result<()> {
         "center" | "centre" => HeaderAlignment::Center,
         "right" => HeaderAlignment::Right,
         _ => {
-            eprintln!("Error: Invalid alignment '{}'. Valid options are: left, center, right", args.align);
+            eprintln!(
+                "Error: Invalid alignment '{}'. Valid options are: left, center, right",
+                args.align
+            );
             std::process::exit(1);
         }
     };

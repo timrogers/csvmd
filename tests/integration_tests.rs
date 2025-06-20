@@ -205,7 +205,13 @@ fn test_cli_with_center_alignment() {
     writeln!(temp_file, "Jane,30").unwrap();
 
     let output = Command::new("cargo")
-        .args(["run", "--", "--align", "center", temp_file.path().to_str().unwrap()])
+        .args([
+            "run",
+            "--",
+            "--align",
+            "center",
+            temp_file.path().to_str().unwrap(),
+        ])
         .output()
         .expect("Failed to execute command");
 
@@ -222,7 +228,13 @@ fn test_cli_with_right_alignment() {
     writeln!(temp_file, "John,25").unwrap();
 
     let output = Command::new("cargo")
-        .args(["run", "--", "--align", "right", temp_file.path().to_str().unwrap()])
+        .args([
+            "run",
+            "--",
+            "--align",
+            "right",
+            temp_file.path().to_str().unwrap(),
+        ])
         .output()
         .expect("Failed to execute command");
 
@@ -239,7 +251,13 @@ fn test_cli_with_left_alignment() {
     writeln!(temp_file, "John,25").unwrap();
 
     let output = Command::new("cargo")
-        .args(["run", "--", "--align", "left", temp_file.path().to_str().unwrap()])
+        .args([
+            "run",
+            "--",
+            "--align",
+            "left",
+            temp_file.path().to_str().unwrap(),
+        ])
         .output()
         .expect("Failed to execute command");
 
@@ -256,7 +274,13 @@ fn test_cli_with_invalid_alignment() {
     writeln!(temp_file, "John,25").unwrap();
 
     let output = Command::new("cargo")
-        .args(["run", "--", "--align", "invalid", temp_file.path().to_str().unwrap()])
+        .args([
+            "run",
+            "--",
+            "--align",
+            "invalid",
+            temp_file.path().to_str().unwrap(),
+        ])
         .output()
         .expect("Failed to execute command");
 
@@ -273,7 +297,14 @@ fn test_cli_with_streaming_and_alignment() {
     writeln!(temp_file, "Jane,30").unwrap();
 
     let output = Command::new("cargo")
-        .args(["run", "--", "--stream", "--align", "center", temp_file.path().to_str().unwrap()])
+        .args([
+            "run",
+            "--",
+            "--stream",
+            "--align",
+            "center",
+            temp_file.path().to_str().unwrap(),
+        ])
         .output()
         .expect("Failed to execute command");
 
