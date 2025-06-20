@@ -6,6 +6,9 @@ use csvmd::{csv_to_markdown_streaming, Config};
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::PathBuf;
+use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::thread;
+use std::time::{Duration, Instant};
 
 #[derive(Parser)]
 #[command(name = "csvmd")]
@@ -28,6 +31,141 @@ struct Args {
     stream: bool,
 }
 
+/// A wrapper around stdin that shows a spinner after a timeout if it's interactive
+struct InteractiveStdin {
+    buffer: Vec<u8>,
+    position: usize,
+    initialized: bool,
+}
+
+impl InteractiveStdin {
+    fn new() -> Self {
+        Self {
+            buffer: Vec::new(),
+            position: 0,
+            initialized: false,
+        }
+    }
+
+    fn initialize_if_needed(&mut self) -> io::Result<()> {
+        if self.initialized {
+            return Ok(());
+        }
+
+        self.initialized = true;
+
+        // Check if stdin is interactive (TTY)
+        if !atty::is(atty::Stream::Stdin) {
+            // Not interactive, read all input immediately
+            io::stdin().read_to_end(&mut self.buffer)?;
+            return Ok(());
+        }
+
+        // Interactive session - implement timeout with spinner
+        let (tx, rx) = mpsc::channel();
+        let tx_for_thread = tx.clone();
+
+        // Spawn thread to read from stdin
+        thread::spawn(move || {
+            let mut stdin_buffer = Vec::new();
+            match io::stdin().read_to_end(&mut stdin_buffer) {
+                Ok(_) => {
+                    let _ = tx_for_thread.send(Ok(stdin_buffer));
+                }
+                Err(e) => {
+                    let _ = tx_for_thread.send(Err(e));
+                }
+            }
+        });
+
+        // Wait 2 seconds for input
+        thread::sleep(Duration::from_secs(2));
+
+        // Check if input arrived
+        match rx.try_recv() {
+            Ok(Ok(data)) => {
+                // Input arrived within 2 seconds
+                self.buffer = data;
+                return Ok(());
+            }
+            Ok(Err(e)) => {
+                // Error occurred
+                return Err(e);
+            }
+            Err(TryRecvError::Empty) => {
+                // No input yet, show spinner
+                self.show_spinner_and_wait(rx)?;
+            }
+            Err(TryRecvError::Disconnected) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    "Input thread disconnected",
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
+    fn show_spinner_and_wait(
+        &mut self,
+        rx: Receiver<std::result::Result<Vec<u8>, io::Error>>,
+    ) -> io::Result<()> {
+        let spinner_chars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+        let mut spinner_index = 0;
+        let _start_time = Instant::now();
+
+        loop {
+            // Show spinner
+            eprint!("\r{} Waiting for input via stdin... (To read from a file, use `csvmd path/to/file.csv`.)   ", 
+                    spinner_chars[spinner_index]);
+
+            // Check for input
+            match rx.try_recv() {
+                Ok(Ok(data)) => {
+                    // Clear spinner line
+                    eprint!("\r{}\r", " ".repeat(85));
+                    self.buffer = data;
+                    return Ok(());
+                }
+                Ok(Err(e)) => {
+                    eprint!("\r{}\r", " ".repeat(85));
+                    return Err(e);
+                }
+                Err(TryRecvError::Empty) => {
+                    // No input yet, continue spinning
+                    thread::sleep(Duration::from_millis(100));
+                    spinner_index = (spinner_index + 1) % spinner_chars.len();
+                }
+                Err(TryRecvError::Disconnected) => {
+                    eprint!("\r{}\r", " ".repeat(85));
+                    return Err(io::Error::new(
+                        io::ErrorKind::BrokenPipe,
+                        "Input thread disconnected",
+                    ));
+                }
+            }
+        }
+    }
+}
+
+impl Read for InteractiveStdin {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.initialize_if_needed()?;
+
+        let remaining = self.buffer.len() - self.position;
+        if remaining == 0 {
+            return Ok(0); // EOF
+        }
+
+        let to_copy = buf.len().min(remaining);
+        buf[..to_copy].copy_from_slice(&self.buffer[self.position..self.position + to_copy]);
+        self.position += to_copy;
+
+        Ok(to_copy)
+    }
+}
+
 fn main() -> Result<()> {
     let args = Args::parse();
 
@@ -41,7 +179,7 @@ fn main() -> Result<()> {
         // Streaming mode: process row-by-row
         let input: Box<dyn Read> = match args.file {
             Some(path) => Box::new(File::open(path)?),
-            None => Box::new(io::stdin()),
+            None => Box::new(InteractiveStdin::new()),
         };
 
         csv_to_markdown_streaming(input, io::stdout(), config)?;
@@ -49,7 +187,7 @@ fn main() -> Result<()> {
         // Standard mode: load all into memory then output
         let input: Box<dyn Read> = match args.file {
             Some(path) => Box::new(File::open(path)?),
-            None => Box::new(io::stdin()),
+            None => Box::new(InteractiveStdin::new()),
         };
 
         let output = csvmd::csv_to_markdown(input, config)?;

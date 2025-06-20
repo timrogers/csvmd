@@ -159,3 +159,40 @@ fn test_cli_with_mixed_quote_styles() {
     assert!(result.contains("E=mc²"));
     assert!(result.contains("No quotes here"));
 }
+
+#[test]
+fn test_cli_stdin_with_piped_input_is_fast() {
+    // Test that piped input doesn't have a 2-second delay
+    let csv_data = "Product,Price\nLaptop,$999\nMouse,$25";
+
+    let start = std::time::Instant::now();
+
+    let mut child = Command::new("cargo")
+        .args(["run"])
+        .arg("--")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(csv_data.as_bytes())
+        .unwrap();
+
+    let result = child.wait_with_output().unwrap();
+    let elapsed = start.elapsed();
+
+    let stdout = String::from_utf8(result.stdout).unwrap();
+    let expected = "| Product | Price |\n| --- | --- |\n| Laptop | $999 |\n| Mouse | $25 |\n";
+    assert_eq!(stdout, expected);
+
+    // Should complete quickly since input is piped (not interactive)
+    assert!(
+        elapsed.as_secs() < 2,
+        "Piped input should not have 2-second delay, took {:?}",
+        elapsed
+    );
+}
