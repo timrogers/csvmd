@@ -1,0 +1,7 @@
+---
+source: tests/edge_cases.rs
+expression: result
+---
+|  |  |  |
+| --- | --- | --- |
+|  |  |  |

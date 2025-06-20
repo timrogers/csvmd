@@ -15,9 +15,7 @@ fn test_cli_with_file_input() {
         .expect("Failed to execute command");
 
     let result = String::from_utf8(output.stdout).unwrap();
-    let expected =
-        "| Name | Age | City |\n| --- | --- | --- |\n| John | 25 | NYC |\n| Jane | 30 | LA |\n";
-    assert_eq!(result, expected);
+    insta::assert_snapshot!(result);
 }
 
 #[test]
@@ -41,8 +39,7 @@ fn test_cli_with_stdin() {
     let result = output.wait_with_output().unwrap();
 
     let stdout = String::from_utf8(result.stdout).unwrap();
-    let expected = "| Product | Price |\n| --- | --- |\n| Laptop | $999 |\n| Mouse | $25 |\n";
-    assert_eq!(stdout, expected);
+    insta::assert_snapshot!(stdout);
 }
 
 #[test]
@@ -62,9 +59,7 @@ fn test_cli_with_complex_csv() {
         .expect("Failed to execute command");
 
     let result = String::from_utf8(output.stdout).unwrap();
-    assert!(result.contains("A person with<br>multiple lines"));
-    assert!(result.contains("Has \\| pipes"));
-    assert!(result.contains("tag1,tag2"));
+    insta::assert_snapshot!(result);
 }
 
 #[test]
@@ -77,7 +72,7 @@ fn test_cli_with_empty_file() {
         .expect("Failed to execute command");
 
     let result = String::from_utf8(output.stdout).unwrap();
-    assert_eq!(result, "");
+    insta::assert_snapshot!(result);
 }
 
 #[test]
@@ -93,8 +88,7 @@ fn test_cli_with_single_column() {
         .expect("Failed to execute command");
 
     let result = String::from_utf8(output.stdout).unwrap();
-    let expected = "| Item |\n| --- |\n| Apple |\n| Banana |\n";
-    assert_eq!(result, expected);
+    insta::assert_snapshot!(result);
 }
 
 #[test]
@@ -105,8 +99,9 @@ fn test_cli_help_flag() {
         .expect("Failed to execute command");
 
     let result = String::from_utf8(output.stdout).unwrap();
-    assert!(result.contains("Convert CSV to Markdown table"));
-    assert!(result.contains("Usage:"));
+    // Normalize output for cross-platform compatibility (remove .exe extension on Windows)
+    let normalized_result = result.replace("csvmd.exe", "csvmd");
+    insta::assert_snapshot!(normalized_result);
 }
 
 #[test]
@@ -135,10 +130,7 @@ fn test_cli_with_unicode() {
         .expect("Failed to execute command");
 
     let result = String::from_utf8(output.stdout).unwrap();
-    assert!(result.contains("★"));
-    assert!(result.contains("♠"));
-    assert!(result.contains("🚀"));
-    assert!(result.contains("U+2605"));
+    insta::assert_snapshot!(result);
 }
 
 #[test]
@@ -155,9 +147,7 @@ fn test_cli_with_mixed_quote_styles() {
         .expect("Failed to execute command");
 
     let result = String::from_utf8(output.stdout).unwrap();
-    assert!(result.contains("To be or not to be"));
-    assert!(result.contains("E=mc²"));
-    assert!(result.contains("No quotes here"));
+    insta::assert_snapshot!(result);
 }
 
 #[test]
