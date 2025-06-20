@@ -29,9 +29,7 @@ fn test_csv_with_only_commas() {
         .expect("Failed to execute command");
 
     let result = String::from_utf8(output.stdout).unwrap();
-    // Should create a table with empty cells
-    assert!(result.contains("|  |  |  |"));
-    assert!(result.contains("| --- | --- | --- |"));
+    insta::assert_snapshot!(result);
 }
 
 #[test]
@@ -47,8 +45,7 @@ fn test_csv_with_trailing_commas() {
 
     assert!(output.status.success());
     let result = String::from_utf8(output.stdout).unwrap();
-    // Should handle trailing comma as empty column
-    assert!(result.contains("| Name | Age |  |"));
+    insta::assert_snapshot!(result);
 }
 
 #[test]
@@ -167,7 +164,5 @@ fn test_csv_with_inconsistent_columns_extreme() {
 
     assert!(output.status.success());
     let result = String::from_utf8(output.stdout).unwrap();
-    // Should handle extreme column count differences
-    assert!(result.contains("| A |"));
-    assert!(result.contains("| N | O | P | Q | R | S | T | U | V | W | X | Y | Z |"));
+    insta::assert_snapshot!(result);
 }

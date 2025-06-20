@@ -1,0 +1,17 @@
+---
+source: tests/integration_tests.rs
+expression: result
+---
+Convert CSV to Markdown table
+
+Usage: csvmd [OPTIONS] [FILE]
+
+Arguments:
+  [FILE]  Input CSV file (if not provided, reads from stdin)
+
+Options:
+  -d, --delimiter <DELIMITER>  CSV delimiter character [default: ,]
+      --no-headers             Treat first row as data, not headers
+      --stream                 Use streaming mode for large files (writes output immediately)
+  -h, --help                   Print help
+  -V, --version                Print version

@@ -1,0 +1,8 @@
+---
+source: tests/integration_tests.rs
+expression: stdout
+---
+| Product | Price |
+| --- | --- |
+| Laptop | $999 |
+| Mouse | $25 |
