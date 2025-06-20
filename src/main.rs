@@ -2,7 +2,7 @@
 
 use clap::Parser;
 use csvmd::error::Result;
-use csvmd::{csv_to_markdown_streaming, Config};
+use csvmd::{csv_to_markdown_streaming, Config, HeaderAlignment};
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::PathBuf;
@@ -29,6 +29,10 @@ struct Args {
     /// Use streaming mode for large files (writes output immediately)
     #[arg(long)]
     stream: bool,
+
+    /// Header alignment: left, center, or right
+    #[arg(long, default_value = "left")]
+    align: String,
 }
 
 /// A wrapper around stdin that shows a spinner after a timeout if it's interactive
@@ -169,10 +173,22 @@ impl Read for InteractiveStdin {
 fn main() -> Result<()> {
     let args = Args::parse();
 
+    // Parse alignment option
+    let header_alignment = match args.align.to_lowercase().as_str() {
+        "left" => HeaderAlignment::Left,
+        "center" | "centre" => HeaderAlignment::Center,
+        "right" => HeaderAlignment::Right,
+        _ => {
+            eprintln!("Error: Invalid alignment '{}'. Valid options are: left, center, right", args.align);
+            std::process::exit(1);
+        }
+    };
+
     let config = Config {
         has_headers: !args.no_headers,
         flexible: true,
         delimiter: args.delimiter as u8,
+        header_alignment,
     };
 
     if args.stream {

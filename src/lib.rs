@@ -31,6 +31,17 @@ use error::Result;
 use std::fmt::Write as FmtWrite;
 use std::io::{Read, Write};
 
+/// Header alignment options for Markdown tables.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeaderAlignment {
+    /// Left-aligned headers (default): `| --- |`
+    Left,
+    /// Center-aligned headers: `| :---: |`
+    Center,
+    /// Right-aligned headers: `| ---: |`
+    Right,
+}
+
 /// Configuration for CSV to Markdown conversion.
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -40,6 +51,8 @@ pub struct Config {
     pub flexible: bool,
     /// CSV field delimiter character.
     pub delimiter: u8,
+    /// Header alignment for Markdown table.
+    pub header_alignment: HeaderAlignment,
 }
 
 impl Default for Config {
@@ -48,6 +61,7 @@ impl Default for Config {
             has_headers: true,
             flexible: true,
             delimiter: b',',
+            header_alignment: HeaderAlignment::Left,
         }
     }
 }
@@ -120,7 +134,7 @@ pub fn csv_to_markdown<R: Read>(input: R, config: Config) -> Result<String> {
 
         // Add header separator after first row if configured
         if i == 0 && config.has_headers {
-            write_header_separator(&mut output, max_cols)?;
+            write_header_separator(&mut output, max_cols, config.header_alignment)?;
         }
     }
 
@@ -191,7 +205,7 @@ pub fn csv_to_markdown_streaming<R: Read, W: Write>(
 
         // Add header separator after first row if configured
         if first_row && config.has_headers {
-            write_header_separator_to_writer(&mut output, max_cols)?;
+            write_header_separator_to_writer(&mut output, max_cols, config.header_alignment)?;
             first_row = false;
         }
     }
@@ -244,11 +258,17 @@ fn write_table_row_to_writer<W: Write>(
 }
 
 /// Write the header separator line to a string buffer.
-fn write_header_separator(output: &mut String, max_cols: usize) -> Result<()> {
+fn write_header_separator(output: &mut String, max_cols: usize, alignment: HeaderAlignment) -> Result<()> {
     output.push('|');
 
+    let separator = match alignment {
+        HeaderAlignment::Left => " --- |",
+        HeaderAlignment::Center => " :---: |",
+        HeaderAlignment::Right => " ---: |",
+    };
+
     for _ in 0..max_cols {
-        output.push_str(" --- |");
+        output.push_str(separator);
     }
 
     output.push('\n');
@@ -256,11 +276,17 @@ fn write_header_separator(output: &mut String, max_cols: usize) -> Result<()> {
 }
 
 /// Write the header separator line directly to a writer.
-fn write_header_separator_to_writer<W: Write>(output: &mut W, max_cols: usize) -> Result<()> {
+fn write_header_separator_to_writer<W: Write>(output: &mut W, max_cols: usize, alignment: HeaderAlignment) -> Result<()> {
     write!(output, "|")?;
 
+    let separator = match alignment {
+        HeaderAlignment::Left => " --- |",
+        HeaderAlignment::Center => " :---: |",
+        HeaderAlignment::Right => " ---: |",
+    };
+
     for _ in 0..max_cols {
-        write!(output, " --- |")?;
+        write!(output, "{}", separator)?;
     }
 
     writeln!(output)?;
@@ -484,6 +510,81 @@ mod tests {
             "| A | B |  |  |\n| --- | --- | --- | --- |\n| X | Y | Z |  |\n| P | Q | R | S |\n";
 
         // Fixed: streaming now uses two-pass approach to determine max_cols correctly
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_header_alignment_left() {
+        let csv_data = "Name,Age\nJohn,25\nJane,30";
+        let input = Cursor::new(csv_data);
+        let config = Config {
+            header_alignment: HeaderAlignment::Left,
+            ..Config::default()
+        };
+        let result = csv_to_markdown(input, config).unwrap();
+
+        let expected = "| Name | Age |\n| --- | --- |\n| John | 25 |\n| Jane | 30 |\n";
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_header_alignment_center() {
+        let csv_data = "Name,Age\nJohn,25\nJane,30";
+        let input = Cursor::new(csv_data);
+        let config = Config {
+            header_alignment: HeaderAlignment::Center,
+            ..Config::default()
+        };
+        let result = csv_to_markdown(input, config).unwrap();
+
+        let expected = "| Name | Age |\n| :---: | :---: |\n| John | 25 |\n| Jane | 30 |\n";
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_header_alignment_right() {
+        let csv_data = "Name,Age\nJohn,25\nJane,30";
+        let input = Cursor::new(csv_data);
+        let config = Config {
+            header_alignment: HeaderAlignment::Right,
+            ..Config::default()
+        };
+        let result = csv_to_markdown(input, config).unwrap();
+
+        let expected = "| Name | Age |\n| ---: | ---: |\n| John | 25 |\n| Jane | 30 |\n";
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_streaming_header_alignment_center() {
+        let csv_data = "Name,Age\nJohn,25\nJane,30";
+        let input = Cursor::new(csv_data);
+        let mut output = Vec::new();
+        let config = Config {
+            header_alignment: HeaderAlignment::Center,
+            ..Config::default()
+        };
+
+        csv_to_markdown_streaming(input, &mut output, config).unwrap();
+
+        let result = String::from_utf8(output).unwrap();
+        let expected = "| Name | Age |\n| :---: | :---: |\n| John | 25 |\n| Jane | 30 |\n";
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_header_alignment_no_headers() {
+        let csv_data = "Data1,Data2\nValue1,Value2";
+        let input = Cursor::new(csv_data);
+        let config = Config {
+            has_headers: false,
+            header_alignment: HeaderAlignment::Center, // Should be ignored
+            ..Config::default()
+        };
+        let result = csv_to_markdown(input, config).unwrap();
+
+        // Should not have separator line when no headers, regardless of alignment
+        let expected = "| Data1 | Data2 |\n| Value1 | Value2 |\n";
         assert_eq!(result, expected);
     }
 }

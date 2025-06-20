@@ -196,3 +196,89 @@ fn test_cli_stdin_with_piped_input_is_fast() {
         elapsed
     );
 }
+
+#[test]
+fn test_cli_with_center_alignment() {
+    let mut temp_file = NamedTempFile::new().unwrap();
+    writeln!(temp_file, "Name,Age").unwrap();
+    writeln!(temp_file, "John,25").unwrap();
+    writeln!(temp_file, "Jane,30").unwrap();
+
+    let output = Command::new("cargo")
+        .args(["run", "--", "--align", "center", temp_file.path().to_str().unwrap()])
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let result = String::from_utf8(output.stdout).unwrap();
+    let expected = "| Name | Age |\n| :---: | :---: |\n| John | 25 |\n| Jane | 30 |\n";
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn test_cli_with_right_alignment() {
+    let mut temp_file = NamedTempFile::new().unwrap();
+    writeln!(temp_file, "Name,Age").unwrap();
+    writeln!(temp_file, "John,25").unwrap();
+
+    let output = Command::new("cargo")
+        .args(["run", "--", "--align", "right", temp_file.path().to_str().unwrap()])
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let result = String::from_utf8(output.stdout).unwrap();
+    let expected = "| Name | Age |\n| ---: | ---: |\n| John | 25 |\n";
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn test_cli_with_left_alignment() {
+    let mut temp_file = NamedTempFile::new().unwrap();
+    writeln!(temp_file, "Name,Age").unwrap();
+    writeln!(temp_file, "John,25").unwrap();
+
+    let output = Command::new("cargo")
+        .args(["run", "--", "--align", "left", temp_file.path().to_str().unwrap()])
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let result = String::from_utf8(output.stdout).unwrap();
+    let expected = "| Name | Age |\n| --- | --- |\n| John | 25 |\n";
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn test_cli_with_invalid_alignment() {
+    let mut temp_file = NamedTempFile::new().unwrap();
+    writeln!(temp_file, "Name,Age").unwrap();
+    writeln!(temp_file, "John,25").unwrap();
+
+    let output = Command::new("cargo")
+        .args(["run", "--", "--align", "invalid", temp_file.path().to_str().unwrap()])
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Invalid alignment 'invalid'"));
+}
+
+#[test]
+fn test_cli_with_streaming_and_alignment() {
+    let mut temp_file = NamedTempFile::new().unwrap();
+    writeln!(temp_file, "Name,Age").unwrap();
+    writeln!(temp_file, "John,25").unwrap();
+    writeln!(temp_file, "Jane,30").unwrap();
+
+    let output = Command::new("cargo")
+        .args(["run", "--", "--stream", "--align", "center", temp_file.path().to_str().unwrap()])
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let result = String::from_utf8(output.stdout).unwrap();
+    let expected = "| Name | Age |\n| :---: | :---: |\n| John | 25 |\n| Jane | 30 |\n";
+    assert_eq!(result, expected);
+}
