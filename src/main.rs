@@ -46,37 +46,41 @@ impl InteractiveStdin {
             initialized: false,
         }
     }
-    
+
     fn initialize_if_needed(&mut self) -> io::Result<()> {
         if self.initialized {
             return Ok(());
         }
-        
+
         self.initialized = true;
-        
+
         // Check if stdin is interactive (TTY)
         if !atty::is(atty::Stream::Stdin) {
             // Not interactive, read all input immediately
             io::stdin().read_to_end(&mut self.buffer)?;
             return Ok(());
         }
-        
+
         // Interactive session - implement timeout with spinner
         let (tx, rx) = mpsc::channel();
         let tx_for_thread = tx.clone();
-        
+
         // Spawn thread to read from stdin
         thread::spawn(move || {
             let mut stdin_buffer = Vec::new();
             match io::stdin().read_to_end(&mut stdin_buffer) {
-                Ok(_) => { let _ = tx_for_thread.send(Ok(stdin_buffer)); }
-                Err(e) => { let _ = tx_for_thread.send(Err(e)); }
+                Ok(_) => {
+                    let _ = tx_for_thread.send(Ok(stdin_buffer));
+                }
+                Err(e) => {
+                    let _ = tx_for_thread.send(Err(e));
+                }
             }
         });
-        
+
         // Wait 2 seconds for input
         thread::sleep(Duration::from_secs(2));
-        
+
         // Check if input arrived
         match rx.try_recv() {
             Ok(Ok(data)) => {
@@ -94,25 +98,28 @@ impl InteractiveStdin {
             }
             Err(TryRecvError::Disconnected) => {
                 return Err(io::Error::new(
-                    io::ErrorKind::BrokenPipe, 
-                    "Input thread disconnected"
+                    io::ErrorKind::BrokenPipe,
+                    "Input thread disconnected",
                 ));
             }
         }
-        
+
         Ok(())
     }
-    
-    fn show_spinner_and_wait(&mut self, rx: Receiver<std::result::Result<Vec<u8>, io::Error>>) -> io::Result<()> {
+
+    fn show_spinner_and_wait(
+        &mut self,
+        rx: Receiver<std::result::Result<Vec<u8>, io::Error>>,
+    ) -> io::Result<()> {
         let spinner_chars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
         let mut spinner_index = 0;
         let _start_time = Instant::now();
-        
+
         loop {
             // Show spinner
             eprint!("\r{} Waiting for input via stdin... (To read from a file, use `csvmd path/to/file.csv`.)   ", 
                     spinner_chars[spinner_index]);
-            
+
             // Check for input
             match rx.try_recv() {
                 Ok(Ok(data)) => {
@@ -133,8 +140,8 @@ impl InteractiveStdin {
                 Err(TryRecvError::Disconnected) => {
                     eprint!("\r{}\r", " ".repeat(85));
                     return Err(io::Error::new(
-                        io::ErrorKind::BrokenPipe, 
-                        "Input thread disconnected"
+                        io::ErrorKind::BrokenPipe,
+                        "Input thread disconnected",
                     ));
                 }
             }
@@ -145,16 +152,16 @@ impl InteractiveStdin {
 impl Read for InteractiveStdin {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.initialize_if_needed()?;
-        
+
         let remaining = self.buffer.len() - self.position;
         if remaining == 0 {
             return Ok(0); // EOF
         }
-        
+
         let to_copy = buf.len().min(remaining);
         buf[..to_copy].copy_from_slice(&self.buffer[self.position..self.position + to_copy]);
         self.position += to_copy;
-        
+
         Ok(to_copy)
     }
 }
