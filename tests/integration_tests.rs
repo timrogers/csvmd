@@ -99,7 +99,9 @@ fn test_cli_help_flag() {
         .expect("Failed to execute command");
 
     let result = String::from_utf8(output.stdout).unwrap();
-    insta::assert_snapshot!(result);
+    // Normalize output for cross-platform compatibility (remove .exe extension on Windows)
+    let normalized_result = result.replace("csvmd.exe", "csvmd");
+    insta::assert_snapshot!(normalized_result);
 }
 
 #[test]
