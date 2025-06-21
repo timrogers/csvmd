@@ -353,8 +353,9 @@ fn test_cli_with_directory_instead_of_file() {
 
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("Error: Csv"));
-    // Don't check for specific OS error message as it varies between platforms
+    // On Linux, File::open() succeeds for directories but read() fails during CSV parsing (Error: Csv)
+    // On Windows, File::open() fails immediately for directories (Error: Io)
+    assert!(stderr.contains("Error: Csv") || stderr.contains("Error: Io"));
     // The key is that we get an error when trying to process a directory
 }
 
