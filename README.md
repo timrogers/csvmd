@@ -45,8 +45,28 @@ Options:
   -d, --delimiter <DELIMITER>  CSV delimiter character [default: ,]
       --no-headers             Treat first row as data, not headers
       --stream                 Use streaming mode for large files (writes output immediately)
+      --align <ALIGN>          Header alignment: left, center, or right [default: left]
   -h, --help                   Print help
   -V, --version                Print version
+```
+
+### Basic Examples
+
+```bash
+# Basic usage with left-aligned headers (default)
+csvmd data.csv
+
+# Center-aligned headers for better readability
+csvmd --align center data.csv
+
+# Right-aligned headers for numeric data
+csvmd --align right financial_data.csv
+
+# Combined with other options
+csvmd --delimiter ";" --align center --no-headers data.csv
+
+# Streaming mode with alignment for large files
+csvmd --stream --align center large_dataset.csv
 ```
 
 ## Performance ⚡
@@ -82,8 +102,12 @@ For large files, use `--stream` to process data with constant memory usage:
 - **Memory Efficiency**: Streaming mode uses constant memory regardless of file size
 - **Immediate Output**: Results appear as soon as processing begins
 - **Large File Support**: Handle files larger than available RAM
+- **Header Alignment**: The `--align` option works seamlessly with streaming mode, affecting only the header separator line without impacting memory usage or performance
 
 ```bash
 # Process a 100MB file with constant ~10MB memory usage
 csvmd --stream huge_dataset.csv > output.md
+
+# With custom alignment - no additional memory overhead
+csvmd --stream --align center huge_dataset.csv > output.md
 ```

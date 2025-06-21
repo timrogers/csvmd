@@ -1,0 +1,9 @@
+---
+source: tests/integration_tests.rs
+expression: result
+---
+| Symbol | Name | Code |
+| --- | --- | --- |
+| ★ | Star | U+2605 |
+| ♠ | Spade | U+2660 |
+| 🚀 | Rocket | U+1F680 |

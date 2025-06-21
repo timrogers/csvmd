@@ -1,0 +1,8 @@
+---
+source: tests/integration_tests.rs
+expression: result
+---
+| Name | Description | Tags |
+| --- | --- | --- |
+| John | A person with<br>multiple lines | tag1,tag2 |
+| Jane | Has \| pipes | simple |

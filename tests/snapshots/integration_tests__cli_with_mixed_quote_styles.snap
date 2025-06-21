@@ -1,0 +1,9 @@
+---
+source: tests/integration_tests.rs
+expression: result
+---
+| Name | Quote |
+| --- | --- |
+| Shakespeare | To be or not to be |
+| Einstein | E=mc² |
+| Anonymous | No quotes here |
