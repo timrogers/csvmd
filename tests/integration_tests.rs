@@ -354,7 +354,8 @@ fn test_cli_with_directory_instead_of_file() {
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(stderr.contains("Error: Csv"));
-    assert!(stderr.contains("Is a directory"));
+    // Don't check for specific OS error message as it varies between platforms
+    // The key is that we get an error when trying to process a directory
 }
 
 #[test]
