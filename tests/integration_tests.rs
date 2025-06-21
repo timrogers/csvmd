@@ -409,27 +409,38 @@ fn test_cli_with_invalid_utf8_stdin() {
 
 #[test]
 fn test_cli_with_permission_denied_file() {
-    // This test may not work in all environments, so we'll skip it if we can't create a file with restricted permissions
-    use std::fs;
-    use std::os::unix::fs::PermissionsExt;
+    // This test only works on Unix-like systems where we can control file permissions
+    #[cfg(unix)]
+    {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
 
-    let temp_file = NamedTempFile::new().unwrap();
+        let temp_file = NamedTempFile::new().unwrap();
 
-    // Try to make the file unreadable
-    if let Ok(mut perms) = fs::metadata(temp_file.path()).map(|m| m.permissions()) {
-        perms.set_mode(0o000);
-        if fs::set_permissions(temp_file.path(), perms).is_ok() {
-            let output = Command::new("cargo")
-                .args(["run", "--", temp_file.path().to_str().unwrap()])
-                .output()
-                .expect("Failed to execute command");
+        // Try to make the file unreadable
+        if let Ok(mut perms) = fs::metadata(temp_file.path()).map(|m| m.permissions()) {
+            perms.set_mode(0o000);
+            if fs::set_permissions(temp_file.path(), perms).is_ok() {
+                let output = Command::new("cargo")
+                    .args(["run", "--", temp_file.path().to_str().unwrap()])
+                    .output()
+                    .expect("Failed to execute command");
 
-            assert!(!output.status.success());
-            let stderr = String::from_utf8(output.stderr).unwrap();
-            assert!(stderr.contains("Permission denied") || stderr.contains("CSV parsing error"));
+                assert!(!output.status.success());
+                let stderr = String::from_utf8(output.stderr).unwrap();
+                assert!(
+                    stderr.contains("Permission denied") || stderr.contains("CSV parsing error")
+                );
+            }
         }
     }
-    // If we can't set permissions, just skip this test by making it pass
+
+    // On non-Unix systems (like Windows), we'll skip this test since permission
+    // manipulation is platform-specific and complex
+    #[cfg(not(unix))]
+    {
+        // Test passes by doing nothing - this ensures cross-platform compatibility
+    }
 }
 
 #[test]
