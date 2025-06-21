@@ -115,19 +115,20 @@ impl InteractiveStdin {
         &mut self,
         rx: Receiver<std::result::Result<Vec<u8>, io::Error>>,
     ) -> io::Result<()> {
-        let spinner_chars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-        let mut spinner_index = 0;
         let _start_time = Instant::now();
+        let mut message_shown = false;
 
         loop {
-            // Show spinner
-            eprint!("\r{} Waiting for input via stdin... (To read from a file, use `csvmd path/to/file.csv`.)   ", 
-                    spinner_chars[spinner_index]);
+            // Show message once
+            if !message_shown {
+                eprint!("Waiting for input via stdin... (To read from a file, use `csvmd path/to/file.csv`.)");
+                message_shown = true;
+            }
 
             // Check for input
             match rx.try_recv() {
                 Ok(Ok(data)) => {
-                    // Clear spinner line
+                    // Clear message line
                     eprint!("\r{}\r", " ".repeat(85));
                     self.buffer = data;
                     return Ok(());
@@ -137,9 +138,8 @@ impl InteractiveStdin {
                     return Err(e);
                 }
                 Err(TryRecvError::Empty) => {
-                    // No input yet, continue spinning
+                    // No input yet, continue waiting
                     thread::sleep(Duration::from_millis(100));
-                    spinner_index = (spinner_index + 1) % spinner_chars.len();
                 }
                 Err(TryRecvError::Disconnected) => {
                     eprint!("\r{}\r", " ".repeat(85));
