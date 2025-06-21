@@ -1,6 +1,6 @@
 [package]
 name = "csvmd"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Convert from CSV to a Markdown table"
 authors = ["Tim Rogers <me@timrogers.co.uk>"]
