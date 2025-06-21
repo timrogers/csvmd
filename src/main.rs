@@ -4,7 +4,7 @@ use clap::Parser;
 use csvmd::error::Result;
 use csvmd::{csv_to_markdown_streaming, Config, HeaderAlignment};
 use std::fs::File;
-use std::io::{self, Read};
+use std::io::{self, IsTerminal, Read};
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::thread;
@@ -59,7 +59,7 @@ impl InteractiveStdin {
         self.initialized = true;
 
         // Check if stdin is interactive (TTY)
-        if !atty::is(atty::Stream::Stdin) {
+        if !std::io::stdin().is_terminal() {
             // Not interactive, read all input immediately
             io::stdin().read_to_end(&mut self.buffer)?;
             return Ok(());
