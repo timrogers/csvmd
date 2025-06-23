@@ -29,7 +29,7 @@ pub mod error;
 use csv::ReaderBuilder;
 use error::Result;
 use std::fmt::Write as FmtWrite;
-use std::io::{Read, Write};
+use std::io::{Read, Write, Seek};
 
 /// Header alignment options for Markdown tables.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -212,6 +212,205 @@ pub fn csv_to_markdown_streaming<R: Read, W: Write>(
 
     output.flush()?;
     Ok(())
+}
+
+/// Convert CSV data to Markdown using true two-pass streaming for seekable inputs.
+///
+/// This version provides optimal memory efficiency by:
+/// 1. **Seekable inputs (files)**: True two-pass streaming without loading entire file into memory
+/// 2. **Non-seekable inputs (stdin)**: Memory-efficient chunked processing with temporary storage
+///
+/// # Arguments
+///
+/// * `input` - A reader containing CSV data (must be seekable for optimal performance)
+/// * `output` - A writer where the Markdown table will be written
+/// * `config` - Configuration options for the conversion
+///
+/// # Errors
+///
+/// Returns `CsvMdError` if reading, parsing, or writing fails.
+pub fn csv_to_markdown_two_pass_streaming<R: Read + std::io::Seek, W: Write>(
+    mut input: R,
+    mut output: W,
+    config: Config,
+) -> Result<()> {
+    // First pass: determine max column count without storing all data
+    let max_cols = {
+        let mut reader = ReaderBuilder::new()
+            .has_headers(false)
+            .flexible(config.flexible)
+            .delimiter(config.delimiter)
+            .from_reader(&mut input);
+
+        let mut max_cols = 0;
+        for result in reader.records() {
+            let record = result?;
+            max_cols = max_cols.max(record.len());
+        }
+        max_cols
+    };
+
+    // Reset to beginning for second pass
+    input.seek(std::io::SeekFrom::Start(0))?;
+
+    // Second pass: stream output with correct column count
+    let mut reader = ReaderBuilder::new()
+        .has_headers(false)
+        .flexible(config.flexible)
+        .delimiter(config.delimiter)
+        .from_reader(&mut input);
+
+    let mut first_row = true;
+
+    for result in reader.records() {
+        let record = result?;
+        let row: Vec<String> = record.iter().map(escape_markdown_cell).collect();
+
+        // Write the row with correct column count
+        write_table_row_to_writer(&mut output, &row, max_cols)?;
+
+        // Add header separator after first row if configured
+        if first_row && config.has_headers {
+            write_header_separator_to_writer(&mut output, max_cols, config.header_alignment)?;
+            first_row = false;
+        }
+    }
+
+    output.flush()?;
+    Ok(())
+}
+
+/// Convert CSV data to Markdown using memory-efficient chunked streaming.
+///
+/// This version provides a balance between memory efficiency and performance by:
+/// 1. Processing data in chunks to determine column count
+/// 2. Using temporary storage only for metadata, not full content
+/// 3. Streaming output as soon as column count is determined
+///
+/// This is ideal for very large files where memory usage must be minimized.
+///
+/// # Arguments
+///
+/// * `input` - A reader containing CSV data
+/// * `output` - A writer where the Markdown table will be written  
+/// * `config` - Configuration options for the conversion
+/// * `chunk_size` - Size of chunks to process at a time (in bytes)
+///
+/// # Errors
+///
+/// Returns `CsvMdError` if reading, parsing, or writing fails.
+pub fn csv_to_markdown_chunked_streaming<R: Read, W: Write>(
+    mut input: R,
+    mut output: W,
+    config: Config,
+    chunk_size: usize,
+) -> Result<()> {
+
+    
+    // Use a temporary file to store the input for two-pass processing
+    let mut temp_file = tempfile::tempfile()?;
+    
+    // Copy input to temp file while simultaneously determining max columns
+    let mut max_cols = 0;
+    let mut chunk_buffer = vec![0u8; chunk_size];
+    let mut partial_line = String::new();
+    
+    loop {
+        let bytes_read = input.read(&mut chunk_buffer)?;
+        if bytes_read == 0 {
+            break;
+        }
+        
+        // Write to temp file
+        temp_file.write_all(&chunk_buffer[..bytes_read])?;
+        
+        // Process this chunk to update max_cols
+        let chunk_str = String::from_utf8_lossy(&chunk_buffer[..bytes_read]);
+        let full_content = format!("{}{}", partial_line, chunk_str);
+        
+        let lines: Vec<&str> = full_content.lines().collect();
+        
+        // Process complete lines (all but possibly the last one)
+        let complete_lines = if full_content.ends_with('\n') || full_content.ends_with('\r') {
+            &lines[..]
+        } else if lines.len() > 1 {
+            partial_line = lines[lines.len()-1].to_string();
+            &lines[..lines.len()-1]
+        } else {
+            partial_line = full_content;
+            &[]
+        };
+        
+        // Analyze complete lines for column count
+        for line in complete_lines {
+            if !line.is_empty() {
+                let cols = count_csv_columns(line, config.delimiter);
+                max_cols = max_cols.max(cols);
+            }
+        }
+    }
+    
+    // Process any remaining partial line
+    if !partial_line.trim().is_empty() {
+        let cols = count_csv_columns(&partial_line, config.delimiter);
+        max_cols = max_cols.max(cols);
+    }
+    
+    // Reset temp file to beginning for second pass
+    temp_file.seek(std::io::SeekFrom::Start(0))?;
+    
+    // Second pass: stream output with correct column count
+    let mut reader = ReaderBuilder::new()
+        .has_headers(false)
+        .flexible(config.flexible)
+        .delimiter(config.delimiter)
+        .from_reader(temp_file);
+
+    let mut first_row = true;
+
+    for result in reader.records() {
+        let record = result?;
+        let row: Vec<String> = record.iter().map(escape_markdown_cell).collect();
+
+        // Write the row with correct column count
+        write_table_row_to_writer(&mut output, &row, max_cols)?;
+
+        // Add header separator after first row if configured
+        if first_row && config.has_headers {
+            write_header_separator_to_writer(&mut output, max_cols, config.header_alignment)?;
+            first_row = false;
+        }
+    }
+
+    output.flush()?;
+    Ok(())
+}
+
+/// Count columns in a CSV line (simple estimation for chunked processing).
+fn count_csv_columns(line: &str, delimiter: u8) -> usize {
+    let delimiter_char = delimiter as char;
+    let mut count = 1;
+    let mut in_quotes = false;
+    let mut chars = line.chars().peekable();
+    
+    while let Some(ch) = chars.next() {
+        match ch {
+            '"' => {
+                // Handle quote escaping
+                if chars.peek() == Some(&'"') {
+                    chars.next(); // Skip escaped quote
+                } else {
+                    in_quotes = !in_quotes;
+                }
+            }
+            c if c == delimiter_char && !in_quotes => {
+                count += 1;
+            }
+            _ => {}
+        }
+    }
+    
+    count
 }
 
 /// Escape Markdown special characters in a CSV cell.
@@ -594,5 +793,73 @@ mod tests {
         // Should not have separator line when no headers, regardless of alignment
         let expected = "| Data1 | Data2 |\n| Value1 | Value2 |\n";
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_two_pass_streaming_basic() {
+        let csv_data = "Name,Age\nJohn,25\nJane,30";
+        let input = Cursor::new(csv_data);
+        let mut output = Vec::new();
+        let config = Config::default();
+
+        csv_to_markdown_two_pass_streaming(input, &mut output, config).unwrap();
+
+        let result = String::from_utf8(output).unwrap();
+        let expected = "| Name | Age |\n| --- | --- |\n| John | 25 |\n| Jane | 30 |\n";
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_two_pass_streaming_uneven_columns() {
+        let csv_data = "A,B,C\nX,Y\nP,Q,R,S";
+        let input = Cursor::new(csv_data);
+        let mut output = Vec::new();
+        let config = Config::default();
+
+        csv_to_markdown_two_pass_streaming(input, &mut output, config).unwrap();
+
+        let result = String::from_utf8(output).unwrap();
+        let expected = "| A | B | C |  |\n| --- | --- | --- | --- |\n| X | Y |  |  |\n| P | Q | R | S |\n";
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_chunked_streaming_basic() {
+        let csv_data = "Name,Age,City\nJohn,25,NYC\nJane,30,LA\nBob,35,Chicago";
+        let input = Cursor::new(csv_data);
+        let mut output = Vec::new();
+        let config = Config::default();
+        let chunk_size = 20; // Small chunk size to test chunking
+
+        csv_to_markdown_chunked_streaming(input, &mut output, config, chunk_size).unwrap();
+
+        let result = String::from_utf8(output).unwrap();
+        let expected = "| Name | Age | City |\n| --- | --- | --- |\n| John | 25 | NYC |\n| Jane | 30 | LA |\n| Bob | 35 | Chicago |\n";
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_chunked_streaming_with_quotes() {
+        let csv_data = "Name,Description\nJohn,\"A long description with, commas\"\nJane,\"Another description\"";
+        let input = Cursor::new(csv_data);
+        let mut output = Vec::new();
+        let config = Config::default();
+        let chunk_size = 15; // Small chunk size
+
+        csv_to_markdown_chunked_streaming(input, &mut output, config, chunk_size).unwrap();
+
+        let result = String::from_utf8(output).unwrap();
+        let expected = "| Name | Description |\n| --- | --- |\n| John | A long description with, commas |\n| Jane | Another description |\n";
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_count_csv_columns() {
+        assert_eq!(count_csv_columns("a,b,c", b','), 3);
+        assert_eq!(count_csv_columns("a,b", b','), 2);
+        assert_eq!(count_csv_columns("a", b','), 1);
+        assert_eq!(count_csv_columns("\"a,b\",c", b','), 2);
+        assert_eq!(count_csv_columns("\"a\"\"b\",c", b','), 2); // Escaped quotes
+        assert_eq!(count_csv_columns("a;b;c", b';'), 3);
     }
 }

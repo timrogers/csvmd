@@ -2,7 +2,7 @@
 
 use clap::Parser;
 use csvmd::error::Result;
-use csvmd::{csv_to_markdown_streaming, Config, HeaderAlignment};
+use csvmd::{csv_to_markdown_streaming, csv_to_markdown_two_pass_streaming, csv_to_markdown_chunked_streaming, Config, HeaderAlignment};
 use std::fs::File;
 use std::io::{self, IsTerminal, Read};
 use std::path::PathBuf;
@@ -29,6 +29,14 @@ struct Args {
     /// Use streaming mode for large files (writes output immediately)
     #[arg(long)]
     stream: bool,
+
+    /// Use two-pass streaming mode for optimal memory efficiency (only for files)
+    #[arg(long)]
+    two_pass: bool,
+
+    /// Use chunked streaming mode with specified chunk size in KB (memory efficient for very large files)
+    #[arg(long)]
+    chunked: Option<usize>,
 
     /// Header alignment: left, center, or right
     #[arg(long, default_value = "left")]
@@ -194,23 +202,50 @@ fn main() -> Result<()> {
         header_alignment,
     };
 
-    if args.stream {
-        // Streaming mode: process row-by-row
-        let input: Box<dyn Read> = match args.file {
-            Some(path) => Box::new(File::open(path)?),
-            None => Box::new(InteractiveStdin::new()),
-        };
+    // Determine processing mode based on arguments
+    match (args.stream, args.two_pass, args.chunked) {
+        (_, true, _) => {
+            // Two-pass streaming mode (only works with files)
+            match args.file {
+                Some(path) => {
+                    let file = File::open(path)?;
+                    csv_to_markdown_two_pass_streaming(file, io::stdout(), config)?;
+                }
+                None => {
+                    eprintln!("Error: Two-pass streaming mode requires a file input. Use regular streaming mode for stdin.");
+                    std::process::exit(1);
+                }
+            }
+        }
+        (_, _, Some(chunk_size_kb)) => {
+            // Chunked streaming mode
+            let chunk_size = chunk_size_kb * 1024; // Convert KB to bytes
+            let input: Box<dyn Read> = match args.file {
+                Some(path) => Box::new(File::open(path)?),
+                None => Box::new(InteractiveStdin::new()),
+            };
 
-        csv_to_markdown_streaming(input, io::stdout(), config)?;
-    } else {
-        // Standard mode: load all into memory then output
-        let input: Box<dyn Read> = match args.file {
-            Some(path) => Box::new(File::open(path)?),
-            None => Box::new(InteractiveStdin::new()),
-        };
+            csv_to_markdown_chunked_streaming(input, io::stdout(), config, chunk_size)?;
+        }
+        (true, false, None) => {
+            // Regular streaming mode: process row-by-row
+            let input: Box<dyn Read> = match args.file {
+                Some(path) => Box::new(File::open(path)?),
+                None => Box::new(InteractiveStdin::new()),
+            };
 
-        let output = csvmd::csv_to_markdown(input, config)?;
-        print!("{}", output);
+            csv_to_markdown_streaming(input, io::stdout(), config)?;
+        }
+        (false, false, None) => {
+            // Standard mode: load all into memory then output
+            let input: Box<dyn Read> = match args.file {
+                Some(path) => Box::new(File::open(path)?),
+                None => Box::new(InteractiveStdin::new()),
+            };
+
+            let output = csvmd::csv_to_markdown(input, config)?;
+            print!("{}", output);
+        }
     }
 
     Ok(())

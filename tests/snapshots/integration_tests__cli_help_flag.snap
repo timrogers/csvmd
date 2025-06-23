@@ -13,6 +13,8 @@ Options:
   -d, --delimiter <DELIMITER>  CSV delimiter character [default: ,]
       --no-headers             Treat first row as data, not headers
       --stream                 Use streaming mode for large files (writes output immediately)
+      --two-pass               Use two-pass streaming mode for optimal memory efficiency (only for files)
+      --chunked <CHUNKED>      Use chunked streaming mode with specified chunk size in KB (memory efficient for very large files)
       --align <ALIGN>          Header alignment: left, center, or right [default: left]
   -h, --help                   Print help
   -V, --version                Print version
