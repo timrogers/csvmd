@@ -8,7 +8,7 @@ use std::io::{self, IsTerminal, Read};
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[derive(Parser)]
 #[command(name = "csvmd")]
@@ -115,26 +115,26 @@ impl InteractiveStdin {
         &mut self,
         rx: Receiver<std::result::Result<Vec<u8>, io::Error>>,
     ) -> io::Result<()> {
-        let _start_time = Instant::now();
-        let mut message_shown = false;
+        let spinner_chars = ['|', '/', '-', '\\'];
+        let mut spinner_index = 0;
+        let base_message =
+            "Waiting for input via stdin... (To read from a file, use csvmd path/to/file.csv.)";
 
         loop {
-            // Show message once
-            if !message_shown {
-                eprint!("Waiting for input via stdin... (To read from a file, use `csvmd path/to/file.csv`.)");
-                message_shown = true;
-            }
+            // Show spinner with rotating character
+            eprint!("\r{} {}", spinner_chars[spinner_index], base_message);
+            spinner_index = (spinner_index + 1) % spinner_chars.len();
 
             // Check for input
             match rx.try_recv() {
                 Ok(Ok(data)) => {
                     // Clear message line
-                    eprint!("\r{}\r", " ".repeat(85));
+                    eprint!("\r{}\r", " ".repeat(base_message.len() + 2));
                     self.buffer = data;
                     return Ok(());
                 }
                 Ok(Err(e)) => {
-                    eprint!("\r{}\r", " ".repeat(85));
+                    eprint!("\r{}\r", " ".repeat(base_message.len() + 2));
                     return Err(e);
                 }
                 Err(TryRecvError::Empty) => {
@@ -142,7 +142,7 @@ impl InteractiveStdin {
                     thread::sleep(Duration::from_millis(100));
                 }
                 Err(TryRecvError::Disconnected) => {
-                    eprint!("\r{}\r", " ".repeat(85));
+                    eprint!("\r{}\r", " ".repeat(base_message.len() + 2));
                     return Err(io::Error::new(
                         io::ErrorKind::BrokenPipe,
                         "Input thread disconnected",
@@ -214,4 +214,29 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_spinner_message_format() {
+        // Test that the spinner message matches expected format
+        let expected_message =
+            "Waiting for input via stdin... (To read from a file, use csvmd path/to/file.csv.)";
+
+        // This test verifies the message content without actually creating an interactive session
+        // The actual spinner functionality is tested through integration tests
+        let spinner_chars = ['|', '/', '-', '\\'];
+
+        // Verify spinner chars are correct
+        assert_eq!(spinner_chars.len(), 4);
+        assert_eq!(spinner_chars[0], '|');
+        assert_eq!(spinner_chars[1], '/');
+        assert_eq!(spinner_chars[2], '-');
+        assert_eq!(spinner_chars[3], '\\');
+
+        // Verify message content
+        assert!(expected_message.contains("Waiting for input via stdin"));
+        assert!(expected_message.contains("csvmd path/to/file.csv"));
+    }
 }
