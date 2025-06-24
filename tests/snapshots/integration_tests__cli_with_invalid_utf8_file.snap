@@ -1,0 +1,7 @@
+---
+source: tests/integration_tests.rs
+expression: "format!(\"exit_code: {}\\nstdout: {}\\nstderr: {}\", output.exit_code,\noutput.stdout, output.stderr)"
+---
+exit_code: 1
+stdout: 
+stderr: Error: Csv { message: "CSV parse error: record 2 (line 3, field: 0, byte: 17): invalid utf-8: invalid UTF-8 in field 0 near byte index 0", location: "line 3, record 2" }

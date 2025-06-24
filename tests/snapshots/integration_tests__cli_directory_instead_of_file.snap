@@ -1,0 +1,7 @@
+---
+source: tests/integration_tests.rs
+expression: "format!(\"exit_code: {}\\nstdout: {}\\nstderr: {}\", output.exit_code,\noutput.stdout, output.stderr)"
+---
+exit_code: 1
+stdout: 
+stderr: Error: Csv { message: "Is a directory (os error 21)", location: "unknown location" }

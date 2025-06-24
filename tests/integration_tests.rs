@@ -2,6 +2,85 @@ use std::io::Write;
 use std::process::Command;
 use tempfile::NamedTempFile;
 
+/// Comprehensive CLI output for snapshot testing
+#[derive(Debug)]
+struct CliOutput {
+    pub stdout: String,
+    pub stderr: String,
+    pub exit_code: i32,
+}
+
+impl CliOutput {
+    fn from_command_output(output: std::process::Output) -> Self {
+        Self {
+            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+            exit_code: output.status.code().unwrap_or(-1),
+        }
+    }
+    
+    /// Normalize cross-platform differences for consistent snapshots
+    fn normalize(mut self) -> Self {
+        // Remove .exe extension on Windows for cross-platform compatibility
+        self.stdout = self.stdout.replace("csvmd.exe", "csvmd");
+        self.stderr = self.stderr.replace("csvmd.exe", "csvmd");
+        
+        // Remove cargo build output from stderr to focus on application errors
+        self.stderr = self.stderr
+            .lines()
+            .filter(|line| {
+                !line.contains("Finished") && 
+                !line.contains("Running") &&
+                !line.trim_start().starts_with('\x1b') // Remove ANSI escape sequences
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+            .trim()
+            .to_string();
+        
+        self
+    }
+}
+
+/// Run csvmd command and capture comprehensive output
+fn run_csvmd_with_args(args: &[&str]) -> CliOutput {
+    let mut cmd_args = vec!["run", "--"];
+    cmd_args.extend_from_slice(args);
+    
+    let output = Command::new("cargo")
+        .args(&cmd_args)
+        .output()
+        .expect("Failed to execute command");
+    
+    CliOutput::from_command_output(output).normalize()
+}
+
+/// Run csvmd command with file input
+fn run_csvmd_with_file(file_path: &str) -> CliOutput {
+    run_csvmd_with_args(&[file_path])
+}
+
+/// Run csvmd command with stdin input
+fn run_csvmd_with_stdin(input: &str) -> CliOutput {
+    let mut child = Command::new("cargo")
+        .args(["run", "--"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn command");
+
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .unwrap();
+
+    let output = child.wait_with_output().unwrap();
+    CliOutput::from_command_output(output).normalize()
+}
+
 #[test]
 fn test_cli_with_file_input() {
     let mut temp_file = NamedTempFile::new().unwrap();
@@ -9,37 +88,15 @@ fn test_cli_with_file_input() {
     writeln!(temp_file, "John,25,NYC").unwrap();
     writeln!(temp_file, "Jane,30,LA").unwrap();
 
-    let output = Command::new("cargo")
-        .args(["run", "--", temp_file.path().to_str().unwrap()])
-        .output()
-        .expect("Failed to execute command");
-
-    let result = String::from_utf8(output.stdout).unwrap();
-    insta::assert_snapshot!(result);
+    let output = run_csvmd_with_file(temp_file.path().to_str().unwrap());
+    insta::assert_snapshot!(output.stdout);
 }
 
 #[test]
 fn test_cli_with_stdin() {
     let csv_data = "Product,Price\nLaptop,$999\nMouse,$25";
-
-    let output = Command::new("cargo")
-        .args(["run"])
-        .arg("--")
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .unwrap();
-
-    output
-        .stdin
-        .as_ref()
-        .unwrap()
-        .write_all(csv_data.as_bytes())
-        .unwrap();
-    let result = output.wait_with_output().unwrap();
-
-    let stdout = String::from_utf8(result.stdout).unwrap();
-    insta::assert_snapshot!(stdout);
+    let output = run_csvmd_with_stdin(csv_data);
+    insta::assert_snapshot!(output.stdout);
 }
 
 #[test]
@@ -53,26 +110,15 @@ fn test_cli_with_complex_csv() {
     .unwrap();
     writeln!(temp_file, "Jane,\"Has | pipes\",simple").unwrap();
 
-    let output = Command::new("cargo")
-        .args(["run", "--", temp_file.path().to_str().unwrap()])
-        .output()
-        .expect("Failed to execute command");
-
-    let result = String::from_utf8(output.stdout).unwrap();
-    insta::assert_snapshot!(result);
+    let output = run_csvmd_with_file(temp_file.path().to_str().unwrap());
+    insta::assert_snapshot!(output.stdout);
 }
 
 #[test]
 fn test_cli_with_empty_file() {
     let temp_file = NamedTempFile::new().unwrap();
-
-    let output = Command::new("cargo")
-        .args(["run", "--", temp_file.path().to_str().unwrap()])
-        .output()
-        .expect("Failed to execute command");
-
-    let result = String::from_utf8(output.stdout).unwrap();
-    insta::assert_snapshot!(result);
+    let output = run_csvmd_with_file(temp_file.path().to_str().unwrap());
+    insta::assert_snapshot!(output.stdout);
 }
 
 #[test]
@@ -82,38 +128,22 @@ fn test_cli_with_single_column() {
     writeln!(temp_file, "Apple").unwrap();
     writeln!(temp_file, "Banana").unwrap();
 
-    let output = Command::new("cargo")
-        .args(["run", "--", temp_file.path().to_str().unwrap()])
-        .output()
-        .expect("Failed to execute command");
-
-    let result = String::from_utf8(output.stdout).unwrap();
-    insta::assert_snapshot!(result);
+    let output = run_csvmd_with_file(temp_file.path().to_str().unwrap());
+    insta::assert_snapshot!(output.stdout);
 }
 
 #[test]
 fn test_cli_help_flag() {
-    let output = Command::new("cargo")
-        .args(["run", "--", "--help"])
-        .output()
-        .expect("Failed to execute command");
-
-    let result = String::from_utf8(output.stdout).unwrap();
-    // Normalize output for cross-platform compatibility (remove .exe extension on Windows)
-    let normalized_result = result.replace("csvmd.exe", "csvmd");
-    insta::assert_snapshot!(normalized_result);
+    let output = run_csvmd_with_args(&["--help"]);
+    insta::assert_snapshot!(output.stdout);
 }
 
 #[test]
 fn test_cli_nonexistent_file() {
-    let output = Command::new("cargo")
-        .args(["run", "--", "/nonexistent/file.csv"])
-        .output()
-        .expect("Failed to execute command");
-
-    assert!(!output.status.success());
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("No such file") || stderr.contains("cannot find"));
+    let output = run_csvmd_with_args(&["/nonexistent/file.csv"]);
+    // Capture full CLI behavior - exit code, stdout, and stderr
+    insta::assert_snapshot!(format!("exit_code: {}\nstdout: {}\nstderr: {}", 
+        output.exit_code, output.stdout, output.stderr));
 }
 
 #[test]
@@ -124,13 +154,8 @@ fn test_cli_with_unicode() {
     writeln!(temp_file, "♠,Spade,U+2660").unwrap();
     writeln!(temp_file, "🚀,Rocket,U+1F680").unwrap();
 
-    let output = Command::new("cargo")
-        .args(["run", "--", temp_file.path().to_str().unwrap()])
-        .output()
-        .expect("Failed to execute command");
-
-    let result = String::from_utf8(output.stdout).unwrap();
-    insta::assert_snapshot!(result);
+    let output = run_csvmd_with_file(temp_file.path().to_str().unwrap());
+    insta::assert_snapshot!(output.stdout);
 }
 
 #[test]
@@ -141,13 +166,8 @@ fn test_cli_with_mixed_quote_styles() {
     writeln!(temp_file, "Einstein,\"E=mc²\"").unwrap();
     writeln!(temp_file, "Anonymous,No quotes here").unwrap();
 
-    let output = Command::new("cargo")
-        .args(["run", "--", temp_file.path().to_str().unwrap()])
-        .output()
-        .expect("Failed to execute command");
-
-    let result = String::from_utf8(output.stdout).unwrap();
-    insta::assert_snapshot!(result);
+    let output = run_csvmd_with_file(temp_file.path().to_str().unwrap());
+    insta::assert_snapshot!(output.stdout);
 }
 
 #[test]
@@ -194,21 +214,16 @@ fn test_cli_with_center_alignment() {
     writeln!(temp_file, "John,25").unwrap();
     writeln!(temp_file, "Jane,30").unwrap();
 
-    let output = Command::new("cargo")
-        .args([
-            "run",
-            "--",
-            "--align",
-            "center",
-            temp_file.path().to_str().unwrap(),
-        ])
-        .output()
-        .expect("Failed to execute command");
+    let output = run_csvmd_with_args(&[
+        "--align",
+        "center",
+        temp_file.path().to_str().unwrap(),
+    ]);
 
-    assert!(output.status.success());
-    let result = String::from_utf8(output.stdout).unwrap();
+    // Verify successful execution and capture output
+    assert_eq!(output.exit_code, 0);
     let expected = "| Name | Age |\n| :---: | :---: |\n| John | 25 |\n| Jane | 30 |\n";
-    assert_eq!(result, expected);
+    assert_eq!(output.stdout, expected);
 }
 
 #[test]
@@ -217,21 +232,15 @@ fn test_cli_with_right_alignment() {
     writeln!(temp_file, "Name,Age").unwrap();
     writeln!(temp_file, "John,25").unwrap();
 
-    let output = Command::new("cargo")
-        .args([
-            "run",
-            "--",
-            "--align",
-            "right",
-            temp_file.path().to_str().unwrap(),
-        ])
-        .output()
-        .expect("Failed to execute command");
+    let output = run_csvmd_with_args(&[
+        "--align",
+        "right",
+        temp_file.path().to_str().unwrap(),
+    ]);
 
-    assert!(output.status.success());
-    let result = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(output.exit_code, 0);
     let expected = "| Name | Age |\n| ---: | ---: |\n| John | 25 |\n";
-    assert_eq!(result, expected);
+    assert_eq!(output.stdout, expected);
 }
 
 #[test]
@@ -240,21 +249,15 @@ fn test_cli_with_left_alignment() {
     writeln!(temp_file, "Name,Age").unwrap();
     writeln!(temp_file, "John,25").unwrap();
 
-    let output = Command::new("cargo")
-        .args([
-            "run",
-            "--",
-            "--align",
-            "left",
-            temp_file.path().to_str().unwrap(),
-        ])
-        .output()
-        .expect("Failed to execute command");
+    let output = run_csvmd_with_args(&[
+        "--align",
+        "left",
+        temp_file.path().to_str().unwrap(),
+    ]);
 
-    assert!(output.status.success());
-    let result = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(output.exit_code, 0);
     let expected = "| Name | Age |\n| --- | --- |\n| John | 25 |\n";
-    assert_eq!(result, expected);
+    assert_eq!(output.stdout, expected);
 }
 
 #[test]
@@ -263,20 +266,15 @@ fn test_cli_with_invalid_alignment() {
     writeln!(temp_file, "Name,Age").unwrap();
     writeln!(temp_file, "John,25").unwrap();
 
-    let output = Command::new("cargo")
-        .args([
-            "run",
-            "--",
-            "--align",
-            "invalid",
-            temp_file.path().to_str().unwrap(),
-        ])
-        .output()
-        .expect("Failed to execute command");
+    let output = run_csvmd_with_args(&[
+        "--align",
+        "invalid",
+        temp_file.path().to_str().unwrap(),
+    ]);
 
-    assert!(!output.status.success());
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("Invalid alignment 'invalid'"));
+    // Capture complete error behavior including exit code and stderr
+    insta::assert_snapshot!(format!("exit_code: {}\nstdout: {}\nstderr: {}", 
+        output.exit_code, output.stdout, output.stderr));
 }
 
 #[test]
@@ -286,22 +284,16 @@ fn test_cli_with_streaming_and_alignment() {
     writeln!(temp_file, "John,25").unwrap();
     writeln!(temp_file, "Jane,30").unwrap();
 
-    let output = Command::new("cargo")
-        .args([
-            "run",
-            "--",
-            "--stream",
-            "--align",
-            "center",
-            temp_file.path().to_str().unwrap(),
-        ])
-        .output()
-        .expect("Failed to execute command");
+    let output = run_csvmd_with_args(&[
+        "--stream",
+        "--align",
+        "center",
+        temp_file.path().to_str().unwrap(),
+    ]);
 
-    assert!(output.status.success());
-    let result = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(output.exit_code, 0);
     let expected = "| Name | Age |\n| :---: | :---: |\n| John | 25 |\n| Jane | 30 |\n";
-    assert_eq!(result, expected);
+    assert_eq!(output.stdout, expected);
 }
 
 #[test]
@@ -311,16 +303,11 @@ fn test_cli_with_invalid_utf8_file() {
     write!(temp_file, "Name,Age\nJohn,25\n").unwrap();
     temp_file.write_all(&[0x80, 0x81, 0x82]).unwrap();
 
-    let output = Command::new("cargo")
-        .args(["run", "--", temp_file.path().to_str().unwrap()])
-        .output()
-        .expect("Failed to execute command");
-
-    assert!(!output.status.success());
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("Error: Csv"));
-    assert!(stderr.contains("invalid utf-8"));
-    assert!(stderr.contains("line 3, record 2"));
+    let output = run_csvmd_with_file(temp_file.path().to_str().unwrap());
+    
+    // Capture complete error behavior for UTF-8 issues
+    insta::assert_snapshot!(format!("exit_code: {}\nstdout: {}\nstderr: {}", 
+        output.exit_code, output.stdout, output.stderr));
 }
 
 #[test]
@@ -330,33 +317,11 @@ fn test_cli_with_invalid_utf8_streaming_mode() {
     write!(temp_file, "Name,Age\nJohn,25\n").unwrap();
     temp_file.write_all(&[0x80, 0x81, 0x82]).unwrap();
 
-    let output = Command::new("cargo")
-        .args(["run", "--", "--stream", temp_file.path().to_str().unwrap()])
-        .output()
-        .expect("Failed to execute command");
-
-    assert!(!output.status.success());
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("Error: Csv"));
-    assert!(stderr.contains("invalid utf-8"));
-    assert!(stderr.contains("line 3, record 2"));
-}
-
-#[test]
-fn test_cli_with_directory_instead_of_file() {
-    let temp_dir = tempfile::tempdir().unwrap();
-
-    let output = Command::new("cargo")
-        .args(["run", "--", temp_dir.path().to_str().unwrap()])
-        .output()
-        .expect("Failed to execute command");
-
-    assert!(!output.status.success());
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    // On Linux, File::open() succeeds for directories but read() fails during CSV parsing (Error: Csv)
-    // On Windows, File::open() fails immediately for directories (Error: Io)
-    assert!(stderr.contains("Error: Csv") || stderr.contains("Error: Io"));
-    // The key is that we get an error when trying to process a directory
+    let output = run_csvmd_with_args(&["--stream", temp_file.path().to_str().unwrap()]);
+    
+    // Capture streaming mode UTF-8 error behavior
+    insta::assert_snapshot!(format!("exit_code: {}\nstdout: {}\nstderr: {}", 
+        output.exit_code, output.stdout, output.stderr));
 }
 
 #[test]
@@ -491,4 +456,113 @@ fn test_cli_with_mixed_valid_and_invalid_utf8() {
     assert!(stderr.contains("invalid utf-8"));
     // Should provide location information
     assert!(stderr.contains("line") || stderr.contains("record"));
+}
+
+// New comprehensive CLI tests for improved coverage
+
+#[test]
+fn test_cli_version_flag() {
+    let output = run_csvmd_with_args(&["--version"]);
+    // Version flag should exit successfully and output version info
+    assert_eq!(output.exit_code, 0);
+    assert!(output.stdout.contains("csvmd"));
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn test_cli_with_custom_delimiter() {
+    let mut temp_file = NamedTempFile::new().unwrap();
+    writeln!(temp_file, "Name;Age;City").unwrap();
+    writeln!(temp_file, "John;25;NYC").unwrap();
+    writeln!(temp_file, "Jane;30;LA").unwrap();
+
+    let output = run_csvmd_with_args(&[
+        "--delimiter", ";",
+        temp_file.path().to_str().unwrap(),
+    ]);
+    
+    insta::assert_snapshot!(output.stdout);
+}
+
+#[test]
+fn test_cli_with_no_headers_flag() {
+    let mut temp_file = NamedTempFile::new().unwrap();
+    writeln!(temp_file, "John,25,NYC").unwrap();
+    writeln!(temp_file, "Jane,30,LA").unwrap();
+
+    let output = run_csvmd_with_args(&[
+        "--no-headers",
+        temp_file.path().to_str().unwrap(),
+    ]);
+    
+    insta::assert_snapshot!(output.stdout);
+}
+
+#[test]
+fn test_cli_with_streaming_flag() {
+    let mut temp_file = NamedTempFile::new().unwrap();
+    writeln!(temp_file, "Name,Age").unwrap();
+    writeln!(temp_file, "John,25").unwrap();
+    writeln!(temp_file, "Jane,30").unwrap();
+
+    let output = run_csvmd_with_args(&[
+        "--stream",
+        temp_file.path().to_str().unwrap(),
+    ]);
+    
+    insta::assert_snapshot!(output.stdout);
+}
+
+#[test]
+fn test_cli_combined_flags() {
+    let mut temp_file = NamedTempFile::new().unwrap();
+    writeln!(temp_file, "Name;Age").unwrap();
+    writeln!(temp_file, "John;25").unwrap();
+    writeln!(temp_file, "Jane;30").unwrap();
+
+    let output = run_csvmd_with_args(&[
+        "--delimiter", ";",
+        "--stream",
+        "--align", "right",
+        temp_file.path().to_str().unwrap(),
+    ]);
+    
+    insta::assert_snapshot!(output.stdout);
+}
+
+#[test]
+fn test_cli_stdin_empty_input() {
+    let output = run_csvmd_with_stdin("");
+    insta::assert_snapshot!(output.stdout);
+}
+
+#[test]
+fn test_cli_stdin_single_line() {
+    let output = run_csvmd_with_stdin("Name,Age");
+    insta::assert_snapshot!(output.stdout);
+}
+
+#[test]
+fn test_cli_with_very_large_field() {
+    let mut temp_file = NamedTempFile::new().unwrap();
+    writeln!(temp_file, "Name,Description").unwrap();
+    let large_content = "x".repeat(10000);
+    writeln!(temp_file, "Test,\"{}\"", large_content).unwrap();
+
+    let output = run_csvmd_with_file(temp_file.path().to_str().unwrap());
+    
+    // Should handle large fields successfully
+    assert_eq!(output.exit_code, 0);
+    assert!(output.stdout.contains(&large_content));
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn test_cli_directory_instead_of_file() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let output = run_csvmd_with_args(&[temp_dir.path().to_str().unwrap()]);
+    
+    // Should fail when given a directory instead of a file
+    insta::assert_snapshot!(format!("exit_code: {}\nstdout: {}\nstderr: {}", 
+        output.exit_code, output.stdout, output.stderr));
 }
