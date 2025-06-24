@@ -1,0 +1,7 @@
+---
+source: tests/integration_tests.rs
+expression: "format!(\"exit_code: {}\\nstdout: {}\\nstderr: {}\", output.exit_code,\noutput.stdout, output.stderr)"
+---
+exit_code: 1
+stdout: 
+stderr: Error: Io(Os { code: 2, kind: NotFound, message: "No such file or directory" })

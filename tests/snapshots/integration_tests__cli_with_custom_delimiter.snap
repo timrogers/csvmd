@@ -1,0 +1,8 @@
+---
+source: tests/integration_tests.rs
+expression: output.stdout
+---
+| Name | Age | City |
+| --- | --- | --- |
+| John | 25 | NYC |
+| Jane | 30 | LA |

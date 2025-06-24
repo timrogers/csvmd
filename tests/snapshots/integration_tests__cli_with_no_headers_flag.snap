@@ -1,0 +1,6 @@
+---
+source: tests/integration_tests.rs
+expression: output.stdout
+---
+| John | 25 | NYC |
+| Jane | 30 | LA |

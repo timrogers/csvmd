@@ -111,3 +111,67 @@ csvmd --stream huge_dataset.csv > output.md
 # With custom alignment - no additional memory overhead
 csvmd --stream --align center huge_dataset.csv > output.md
 ```
+
+## Development 🛠️
+
+### Building and Testing
+
+```bash
+# Build the project
+cargo build
+
+# Run all tests
+cargo test
+
+# Run only integration tests
+cargo test --test integration_tests
+
+# Run only unit tests
+cargo test --lib
+```
+
+### Snapshot Testing
+
+This project uses [insta](https://insta.rs/) for snapshot testing of CLI behavior. Snapshot tests capture stdout, stderr, and exit codes to ensure CLI behavior remains consistent.
+
+#### Reviewing and Updating Snapshots
+
+When CLI output changes intentionally, you'll need to review and update snapshots:
+
+```bash
+# Review all pending snapshot changes
+cargo insta review
+
+# Accept all pending snapshots (use with caution)
+cargo insta accept
+
+# Update snapshots while running tests
+INSTA_UPDATE=always cargo test
+
+# Review snapshots for a specific test
+cargo test test_cli_help_flag
+cargo insta review
+```
+
+#### Snapshot Test Structure
+
+CLI tests capture comprehensive output:
+- **Exit code**: Whether the command succeeded (0) or failed (non-zero)
+- **Stdout**: Primary program output (Markdown tables, help text, etc.)
+- **Stderr**: Error messages and diagnostics
+
+Example snapshot format:
+```
+exit_code: 1
+stdout: 
+stderr: Error: Io(Os { code: 2, kind: NotFound, message: "No such file or directory" })
+```
+
+#### Best Practices
+
+- **Review carefully**: Always review snapshot changes to ensure they're expected
+- **Cross-platform**: Tests normalize platform differences (like `.exe` extensions)
+- **Clean stderr**: Build output is filtered out to focus on application errors
+- **Comprehensive coverage**: Tests cover success cases, error cases, and edge cases
+
+For more details on snapshot testing, see the [insta documentation](https://insta.rs/).
