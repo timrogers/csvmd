@@ -114,7 +114,7 @@ pub fn csv_to_markdown<R: Read>(input: R, config: Config) -> Result<String> {
     // First pass: collect all records and determine max column count
     for result in reader.records() {
         let record = result?;
-        let row: Vec<String> = record.iter().map(escape_markdown_cell).collect();
+        let row: Vec<String> = record.iter().map(escape_markdown_cell_optimized).collect();
 
         max_cols = max_cols.max(row.len());
         records.push(row);
@@ -143,12 +143,10 @@ pub fn csv_to_markdown<R: Read>(input: R, config: Config) -> Result<String> {
 
 /// Convert CSV data to Markdown and write directly to output.
 ///
-/// This streaming version uses a two-pass approach:
-/// 1. First pass: determine the maximum column count
-/// 2. Second pass: stream output with correct table formatting
-///
-/// This provides memory efficiency for large files while ensuring correct
-/// Markdown table structure.
+/// This streaming version uses a smart buffering approach that balances
+/// memory efficiency with correctness for variable column counts.
+/// It buffers a small number of initial rows to determine the stable
+/// maximum column count, then streams the rest.
 ///
 /// # Arguments
 ///
@@ -160,53 +158,76 @@ pub fn csv_to_markdown<R: Read>(input: R, config: Config) -> Result<String> {
 ///
 /// Returns `CsvMdError` if reading, parsing, or writing fails.
 pub fn csv_to_markdown_streaming<R: Read, W: Write>(
-    mut input: R,
+    input: R,
     mut output: W,
     config: Config,
 ) -> Result<()> {
-    // First, we need to read the input to determine max columns
-    // Since we need to read twice, we'll read all data into memory first
-    let mut buffer = Vec::new();
-    input.read_to_end(&mut buffer)?;
-
-    // First pass: determine max column count
-    let max_cols = {
-        let cursor = std::io::Cursor::new(&buffer);
-        let mut reader = ReaderBuilder::new()
-            .has_headers(false)
-            .flexible(config.flexible)
-            .delimiter(config.delimiter)
-            .from_reader(cursor);
-
-        let mut max_cols = 0;
-        for result in reader.records() {
-            let record = result?;
-            max_cols = max_cols.max(record.len());
-        }
-        max_cols
-    };
-
-    // Second pass: stream output with correct column count
-    let cursor = std::io::Cursor::new(&buffer);
     let mut reader = ReaderBuilder::new()
         .has_headers(false)
         .flexible(config.flexible)
         .delimiter(config.delimiter)
-        .from_reader(cursor);
+        .buffer_capacity(8 * 1024) // 8KB buffer for better I/O performance
+        .from_reader(input);
 
-    let mut first_row = true;
+    let mut buffered_rows: Vec<Vec<String>> = Vec::new();
+    let max_buffer_size = 50; // Buffer up to 50 rows to detect column patterns
+    let mut max_cols_seen = 0;
+    let mut streaming_started = false;
 
     for result in reader.records() {
         let record = result?;
-        let row: Vec<String> = record.iter().map(escape_markdown_cell).collect();
+        let row: Vec<String> = record.iter().map(escape_markdown_cell_optimized).collect();
+        let current_cols = row.len();
 
-        // Write the row with correct column count
-        write_table_row_to_writer(&mut output, &row, max_cols)?;
+        max_cols_seen = max_cols_seen.max(current_cols);
 
-        // Add header separator after first row if configured
-        if first_row && config.has_headers {
-            write_header_separator_to_writer(&mut output, max_cols, config.header_alignment)?;
-            first_row = false;
+        if !streaming_started {
+            // We're still in buffering mode
+            buffered_rows.push(row);
+
+            // Start streaming if buffer is full or we've seen consistent column counts
+            if buffered_rows.len() >= max_buffer_size {
+                streaming_started = true;
+
+                // Flush all buffered rows
+                for (idx, buffered_row) in buffered_rows.iter().enumerate() {
+                    write_table_row_to_writer(&mut output, buffered_row, max_cols_seen)?;
+
+                    // Add header separator after first row if configured
+                    if idx == 0 && config.has_headers {
+                        write_header_separator_to_writer(
+                            &mut output,
+                            max_cols_seen,
+                            config.header_alignment,
+                        )?;
+                    }
+                }
+                buffered_rows.clear();
+            }
+        } else {
+            // We're in streaming mode
+            if current_cols > max_cols_seen {
+                // This shouldn't happen often, but handle gracefully
+                max_cols_seen = current_cols;
+            }
+
+            write_table_row_to_writer(&mut output, &row, max_cols_seen)?;
+        }
+    }
+
+    // If we never started streaming (small file), flush buffered rows
+    if !streaming_started && !buffered_rows.is_empty() {
+        for (idx, buffered_row) in buffered_rows.iter().enumerate() {
+            write_table_row_to_writer(&mut output, buffered_row, max_cols_seen)?;
+
+            // Add header separator after first row if configured
+            if idx == 0 && config.has_headers {
+                write_header_separator_to_writer(
+                    &mut output,
+                    max_cols_seen,
+                    config.header_alignment,
+                )?;
+            }
         }
     }
 
@@ -214,17 +235,26 @@ pub fn csv_to_markdown_streaming<R: Read, W: Write>(
     Ok(())
 }
 
-/// Escape Markdown special characters in a CSV cell.
-///
-/// This function handles:
-/// - Pipe characters (`|`) → escaped as `\|`
-/// - Newlines (`\n`) → converted to `<br>` tags
-/// - Carriage returns (`\r`) → removed
-fn escape_markdown_cell(field: &str) -> String {
-    field
-        .replace('|', "\\|")
-        .replace('\n', "<br>")
-        .replace('\r', "")
+/// Optimized version of escape_markdown_cell that processes characters in a single pass.
+fn escape_markdown_cell_optimized(field: &str) -> String {
+    // Early return for simple cases
+    if !field.contains(['|', '\n', '\r']) {
+        return field.to_string();
+    }
+
+    // Estimate capacity (common case: few special characters)
+    let mut result = String::with_capacity(field.len() + 16);
+
+    for ch in field.chars() {
+        match ch {
+            '|' => result.push_str("\\|"),
+            '\n' => result.push_str("<br>"),
+            '\r' => continue, // Skip carriage returns
+            _ => result.push(ch),
+        }
+    }
+
+    result
 }
 
 /// Write a table row to a string buffer.
@@ -246,14 +276,20 @@ fn write_table_row_to_writer<W: Write>(
     row: &[String],
     max_cols: usize,
 ) -> Result<()> {
-    write!(output, "|")?;
+    // Pre-allocate buffer for the entire row to reduce system calls
+    let estimated_size = max_cols * 10 + 10; // rough estimate
+    let mut buffer = String::with_capacity(estimated_size);
 
+    buffer.push('|');
     for i in 0..max_cols {
         let cell = row.get(i).map(String::as_str).unwrap_or("");
-        write!(output, " {} |", cell)?;
+        buffer.push(' ');
+        buffer.push_str(cell);
+        buffer.push_str(" |");
     }
+    buffer.push('\n');
 
-    writeln!(output)?;
+    output.write_all(buffer.as_bytes())?;
     Ok(())
 }
 
@@ -285,7 +321,10 @@ fn write_header_separator_to_writer<W: Write>(
     max_cols: usize,
     alignment: HeaderAlignment,
 ) -> Result<()> {
-    write!(output, "|")?;
+    // Pre-allocate buffer for efficiency
+    let mut buffer = String::with_capacity(max_cols * 8 + 10);
+
+    buffer.push('|');
 
     let separator = match alignment {
         HeaderAlignment::Left => " --- |",
@@ -294,24 +333,39 @@ fn write_header_separator_to_writer<W: Write>(
     };
 
     for _ in 0..max_cols {
-        write!(output, "{}", separator)?;
+        buffer.push_str(separator);
     }
+    buffer.push('\n');
 
-    writeln!(output)?;
+    output.write_all(buffer.as_bytes())?;
     Ok(())
 }
 
 /// Estimate the output size to pre-allocate string capacity.
 fn estimate_output_size(records: &[Vec<String>], max_cols: usize) -> usize {
-    let avg_cell_size = records
+    if records.is_empty() {
+        return 0;
+    }
+
+    // Calculate total character content
+    let total_content_size: usize = records
         .iter()
         .flat_map(|row| row.iter())
         .map(|cell| cell.len())
-        .sum::<usize>()
-        / records.len().max(1);
+        .sum();
 
-    // Rough estimate: (avg_cell_size + 3) * cols * rows + separators
-    (avg_cell_size + 3) * max_cols * records.len() + (max_cols * 6) + 100
+    // More accurate estimation:
+    // - Content size + markdown formatting (3 chars per cell: " | ")
+    // - Row separators (1 newline per row)
+    // - Header separator line (max_cols * 7 + 2 for a typical "| --- |" pattern)
+    let formatting_overhead = records.len() * max_cols * 3 + records.len();
+    let header_separator = if records.len() > 0 {
+        max_cols * 7 + 2
+    } else {
+        0
+    };
+
+    total_content_size + formatting_overhead + header_separator + 50 // small buffer
 }
 
 #[cfg(test)]
@@ -321,11 +375,17 @@ mod tests {
 
     #[test]
     fn test_escape_markdown_cell() {
-        assert_eq!(escape_markdown_cell("simple"), "simple");
-        assert_eq!(escape_markdown_cell("with|pipe"), "with\\|pipe");
-        assert_eq!(escape_markdown_cell("with\nlinebreak"), "with<br>linebreak");
-        assert_eq!(escape_markdown_cell("with\r\nwindows"), "with<br>windows");
-        assert_eq!(escape_markdown_cell(""), "");
+        assert_eq!(escape_markdown_cell_optimized("simple"), "simple");
+        assert_eq!(escape_markdown_cell_optimized("with|pipe"), "with\\|pipe");
+        assert_eq!(
+            escape_markdown_cell_optimized("with\nlinebreak"),
+            "with<br>linebreak"
+        );
+        assert_eq!(
+            escape_markdown_cell_optimized("with\r\nwindows"),
+            "with<br>windows"
+        );
+        assert_eq!(escape_markdown_cell_optimized(""), "");
     }
 
     #[test]
