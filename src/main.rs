@@ -170,6 +170,36 @@ impl Read for InteractiveStdin {
     }
 }
 
+/// Process CSV input using streaming mode.
+///
+/// This function handles file or stdin input and processes it using the streaming
+/// CSV to Markdown conversion, which writes output directly without loading
+/// all data into memory first.
+fn process_streaming_mode(file: Option<PathBuf>, config: Config) -> Result<()> {
+    let input: Box<dyn Read> = match file {
+        Some(path) => Box::new(File::open(path)?),
+        None => Box::new(InteractiveStdin::new()),
+    };
+
+    csv_to_markdown_streaming(input, io::stdout(), config)
+}
+
+/// Process CSV input using standard mode.
+///
+/// This function handles file or stdin input and processes it using the standard
+/// CSV to Markdown conversion, which loads all data into memory before generating
+/// the complete output string.
+fn process_standard_mode(file: Option<PathBuf>, config: Config) -> Result<()> {
+    let input: Box<dyn Read> = match file {
+        Some(path) => Box::new(File::open(path)?),
+        None => Box::new(InteractiveStdin::new()),
+    };
+
+    let output = csvmd::csv_to_markdown(input, config)?;
+    print!("{}", output);
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let args = Args::parse();
 
@@ -195,23 +225,8 @@ fn main() -> Result<()> {
     };
 
     if args.stream {
-        // Streaming mode: process row-by-row
-        let input: Box<dyn Read> = match args.file {
-            Some(path) => Box::new(File::open(path)?),
-            None => Box::new(InteractiveStdin::new()),
-        };
-
-        csv_to_markdown_streaming(input, io::stdout(), config)?;
+        process_streaming_mode(args.file, config)
     } else {
-        // Standard mode: load all into memory then output
-        let input: Box<dyn Read> = match args.file {
-            Some(path) => Box::new(File::open(path)?),
-            None => Box::new(InteractiveStdin::new()),
-        };
-
-        let output = csvmd::csv_to_markdown(input, config)?;
-        print!("{}", output);
+        process_standard_mode(args.file, config)
     }
-
-    Ok(())
 }
