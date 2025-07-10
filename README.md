@@ -95,14 +95,23 @@ csvmd handles complex CSV data efficiently, including:
 | Complex Data | 1,000 | 147KB | 4ms |
 | Complex Data | 10,000 | 1MB | 12ms |
 
-### Streaming Mode Benefits
+### Streaming Mode Performance
 
-For large files, use `--stream` to process data with constant memory usage:
+For large files, use `--stream` to process data with constant memory usage. Here are benchmarks comparing streaming vs standard mode:
 
-- **Memory Efficiency**: Streaming mode uses constant memory regardless of file size
+| Dataset | Rows | File Size | Standard Mode | Streaming Mode | Memory Usage (Streaming) |
+| --- | --- | --- | --- | --- | --- |
+| Employee Data | 1,000 | 71KB | 4ms | 4ms | ~10MB |
+| Employee Data | 10,000 | 737KB | 16ms | 20ms | ~10MB |
+| Employee Data | 50,000 | 3MB | 67ms | 91ms | ~10MB |
+| Employee Data | 100,000 | 7MB | 129ms | 181ms | ~10MB |
+| Employee Data | 200,000 | 15MB | ~270ms | 337ms | ~10MB |
+
+**Key Benefits of Streaming Mode:**
+- **Memory Efficiency**: Constant memory usage (~10MB) regardless of file size
 - **Immediate Output**: Results appear as soon as processing begins
 - **Large File Support**: Handle files larger than available RAM
-- **Header Alignment**: The `--align` option works seamlessly with streaming mode, affecting only the header separator line without impacting memory usage or performance
+- **Header Alignment**: The `--align` option works seamlessly with streaming mode
 
 ```bash
 # Process a 100MB file with constant ~10MB memory usage
