@@ -170,6 +170,29 @@ impl Read for InteractiveStdin {
     }
 }
 
+/// Handle streaming mode processing: process CSV row-by-row and write output immediately.
+fn handle_streaming_mode(args: &Args, config: Config) -> Result<()> {
+    let input: Box<dyn Read> = match &args.file {
+        Some(path) => Box::new(File::open(path)?),
+        None => Box::new(InteractiveStdin::new()),
+    };
+
+    csv_to_markdown_streaming(input, io::stdout(), config)?;
+    Ok(())
+}
+
+/// Handle standard mode processing: load entire CSV into memory then output.
+fn handle_standard_mode(args: &Args, config: Config) -> Result<()> {
+    let input: Box<dyn Read> = match &args.file {
+        Some(path) => Box::new(File::open(path)?),
+        None => Box::new(InteractiveStdin::new()),
+    };
+
+    let output = csvmd::csv_to_markdown(input, config)?;
+    print!("{}", output);
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let args = Args::parse();
 
@@ -194,24 +217,10 @@ fn main() -> Result<()> {
         header_alignment,
     };
 
+    // Delegate to appropriate handler based on streaming mode flag
     if args.stream {
-        // Streaming mode: process row-by-row
-        let input: Box<dyn Read> = match args.file {
-            Some(path) => Box::new(File::open(path)?),
-            None => Box::new(InteractiveStdin::new()),
-        };
-
-        csv_to_markdown_streaming(input, io::stdout(), config)?;
+        handle_streaming_mode(&args, config)
     } else {
-        // Standard mode: load all into memory then output
-        let input: Box<dyn Read> = match args.file {
-            Some(path) => Box::new(File::open(path)?),
-            None => Box::new(InteractiveStdin::new()),
-        };
-
-        let output = csvmd::csv_to_markdown(input, config)?;
-        print!("{}", output);
+        handle_standard_mode(&args, config)
     }
-
-    Ok(())
 }
