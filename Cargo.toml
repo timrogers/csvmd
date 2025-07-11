@@ -18,3 +18,15 @@ thiserror = "2.0"
 [dev-dependencies]
 tempfile = "3.0"
 criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "standard_mode"
+harness = false
+
+[[bench]]
+name = "streaming_mode"
+harness = false
+
+[[bench]]
+name = "comparison"
+harness = false
