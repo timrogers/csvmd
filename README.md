@@ -18,9 +18,9 @@ csvmd is designed for high performance with both small and large CSV files. Here
 
 | File Size | Standard Mode | Streaming Mode | Throughput |
 |-----------|---------------|----------------|------------|
-| 100 rows × 5 cols | 113 μs | 150 μs | ~42 MB/s |
-| 1,000 rows × 5 cols | 1.0 ms | 1.2 ms | ~51 MB/s |
-| 10,000 rows × 5 cols | 10.5 ms | 12.3 ms | ~54 MB/s |
+| 100 rows × 5 cols | 94 μs | 112 μs | ~51 MB/s |
+| 1,000 rows × 5 cols | 802 μs | 831 μs | ~65 MB/s |
+| 10,000 rows × 5 cols | 7.96 ms | 7.9 ms | ~71 MB/s |
 
 ### Memory Usage
 
@@ -36,24 +36,24 @@ Performance scales well with increasing column counts:
 
 | Columns | Processing Time | Throughput |
 |---------|----------------|------------|
-| 5 columns | 1.0 ms | ~52 MB/s |
-| 10 columns | 1.8 ms | ~59 MB/s |
-| 20 columns | 3.5 ms | ~63 MB/s |
-| 50 columns | 8.1 ms | ~68 MB/s |
+| 5 columns | 798 μs | ~65 MB/s |
+| 10 columns | 1.43 ms | ~73 MB/s |
+| 20 columns | 2.78 ms | ~79 MB/s |
+| 50 columns | 6.32 ms | ~88 MB/s |
 
 ### Complex Data Handling
 
 Even with complex CSV features (escaped pipes, embedded newlines, quotes), performance remains excellent:
 
-- **100 rows**: 110 μs (~54 MB/s)
-- **1,000 rows**: 965 μs (~63 MB/s)  
-- **5,000 rows**: 4.8 ms (~65 MB/s)
+- **100 rows**: 89 μs (~66 MB/s)
+- **1,000 rows**: 771 μs (~79 MB/s)  
+- **5,000 rows**: 3.79 ms (~82 MB/s)
 
 ### Mode Comparison
 
 - **Standard mode**: Best for smaller files (< 10MB), loads entire CSV into memory
 - **Streaming mode**: Better for very large files, uses two-pass approach with minimal memory usage
-- **Trade-off**: Streaming mode is ~15-20% slower but uses constant memory regardless of file size
+- **Trade-off**: Streaming mode has ~19% overhead for small files, but performs similarly or better for larger files
 
 All benchmarks performed on a modern Apple Silicon Mac. Performance will vary based on hardware and specific CSV characteristics.
 
