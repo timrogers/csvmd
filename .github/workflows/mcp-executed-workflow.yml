@@ -1,0 +1,11 @@
+on: push
+permissions:
+  contents: read
+  packages: read
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    environment: copilot
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
