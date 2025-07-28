@@ -210,7 +210,7 @@ fn main() -> Result<()> {
         };
 
         let output = csvmd::csv_to_markdown(input, config)?;
-        print!("{}", output);
+        print!("{output}");
     }
 
     Ok(())

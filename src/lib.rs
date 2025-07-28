@@ -233,7 +233,7 @@ fn write_table_row(output: &mut String, row: &[String], max_cols: usize) -> Resu
 
     for i in 0..max_cols {
         let cell = row.get(i).map(String::as_str).unwrap_or("");
-        write!(output, " {} |", cell)?;
+        write!(output, " {cell} |")?;
     }
 
     output.push('\n');
@@ -250,7 +250,7 @@ fn write_table_row_to_writer<W: Write>(
 
     for i in 0..max_cols {
         let cell = row.get(i).map(String::as_str).unwrap_or("");
-        write!(output, " {} |", cell)?;
+        write!(output, " {cell} |")?;
     }
 
     writeln!(output)?;
@@ -294,7 +294,7 @@ fn write_header_separator_to_writer<W: Write>(
     };
 
     for _ in 0..max_cols {
-        write!(output, "{}", separator)?;
+        write!(output, "{separator}")?;
     }
 
     writeln!(output)?;
