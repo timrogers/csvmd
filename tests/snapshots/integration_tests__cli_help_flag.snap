@@ -7,12 +7,33 @@ Convert CSV to Markdown table
 Usage: csvmd [OPTIONS] [FILE]
 
 Arguments:
-  [FILE]  Input CSV file (if not provided, reads from stdin)
+  [FILE]
+          Input CSV file (if not provided, reads from stdin)
 
 Options:
-  -d, --delimiter <DELIMITER>  CSV delimiter character [default: ,]
-      --no-headers             Treat first row as data, not headers
-      --stream                 Use streaming mode for large files (writes output immediately)
-      --align <ALIGN>          Header alignment: left, center, or right [default: left]
-  -h, --help                   Print help
-  -V, --version                Print version
+  -d, --delimiter <DELIMITER>
+          CSV delimiter character
+          
+          [default: ,]
+
+      --no-headers
+          Treat first row as data, not headers
+
+      --stream
+          Use streaming mode for large files (writes output immediately)
+
+      --align <ALIGN>
+          Header alignment: left, center, or right
+          
+          [default: left]
+
+          Possible values:
+          - left:   Left-aligned headers
+          - center: Center-aligned headers
+          - right:  Right-aligned headers
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
