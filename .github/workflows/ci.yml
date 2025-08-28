@@ -25,32 +25,19 @@ jobs:
         restore-keys: |
           ${{ runner.OS }}-build-
 
-    - name: Install latest Rust nightly
-      uses: actions-rs/toolchain@v1
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
       with:
-        profile: minimal
-        components: rustc, cargo, clippy, rustfmt
-        toolchain: nightly
-        override: true
-        target: ${{ matrix.job.target }}
+        components: rustfmt, clippy
 
     - name: Run cargo check
-      uses: actions-rs/cargo@v1
-      with:
-        command: check
-        args: --verbose
+      run: cargo check --verbose
 
     - name: Run cargo test
-      uses: actions-rs/cargo@v1
-      with:
-        command: test
-        args: --verbose
+      run: cargo test --verbose
 
     - name: Run cargo fmt
-      uses: actions-rs/cargo@v1
-      with:
-        command: fmt
-        args: --all -- --check
+      run: cargo fmt --all -- --check
   build:
     strategy:
       fail-fast: false
@@ -89,8 +76,10 @@ jobs:
     - name: Add $HOME/.cargo/bin to PATH (self-hosted runners only)
       run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
       if: matrix.job.runs_on == 'self-hosted'
-    - name: Use Rust 1.87.0 with target ${{ matrix.job.target }}
-      run: rustup override set 1.87.0-${{ matrix.job.target }}
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.job.target }}
     - uses: actions/checkout@v4
     - uses: Swatinem/rust-cache@v2
     - name: Build in release mode
@@ -197,8 +186,8 @@ jobs:
     needs: build
     steps:
       - uses: actions/checkout@v4
-      - name: Use Rust 1.87.0
-        run: rustup override set 1.87.0
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install cargo-edit
         run: cargo install cargo-edit
@@ -255,8 +244,10 @@ jobs:
     if: startsWith(github.event.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
-      - name: Use Rust 1.87.0 with target x86_64-unknown-linux-gnu
-        run: rustup override set 1.87.0-x86_64-unknown-linux-gnu
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
       - uses: Swatinem/rust-cache@v2
       - name: Publish to Crates.io
         run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
