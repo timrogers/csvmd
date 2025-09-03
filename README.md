@@ -95,19 +95,23 @@ csvmd handles complex CSV data efficiently, including:
 | Complex Data | 1,000 | 147KB | 4ms |
 | Complex Data | 10,000 | 1MB | 12ms |
 
-### Streaming Mode Benefits
+### Streaming Mode
 
-For large files, use `--stream` to process data with constant memory usage:
+The `--stream` flag writes output rows directly instead of building a large in-memory string. Behavior differs by input source:
 
-- **Memory Efficiency**: Streaming mode uses constant memory regardless of file size
-- **Immediate Output**: Results appear as soon as processing begins
-- **Large File Support**: Handle files larger than available RAM
-- **Header Alignment**: The `--align` option works seamlessly with streaming mode, affecting only the header separator line without impacting memory usage or performance
+- **File input (seekable)**: Does not buffer the entire file in memory. Performs two passes by rewinding the file: the first pass computes the maximum column count; the second pass writes the Markdown table. Output memory remains bounded because rows are written as they are processed.
+- **Stdin/pipe (non-seekable)**: Buffers the entire input first to determine the maximum column count, then streams the output. This still reduces peak memory versus the default mode because the full Markdown output is not stored in memory, but it cannot process inputs larger than available RAM.
+- **Two-pass processing**: In both cases, output begins after the first pass completes to ensure correct column widths and header separator formatting.
+
+Examples:
 
 ```bash
-# Process a 100MB file with constant ~10MB memory usage
-csvmd --stream huge_dataset.csv > output.md
+# File input: two passes without buffering the whole file in memory
+csvmd --stream data.csv > output.md
 
-# With custom alignment - no additional memory overhead
-csvmd --stream --align center huge_dataset.csv > output.md
+# Piped input: buffers input, then streams output
+cat data.csv | csvmd --stream > output.md
+
+# With custom alignment
+csvmd --stream --align center data.csv > output.md
 ```
