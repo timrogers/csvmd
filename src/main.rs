@@ -1,6 +1,6 @@
 //! CSV to Markdown table converter CLI tool.
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use csvmd::error::Result;
 use csvmd::{csv_to_markdown_streaming, Config, HeaderAlignment};
 use std::fs::File;
@@ -9,6 +9,28 @@ use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::thread;
 use std::time::{Duration, Instant};
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum ClapAlignment {
+    /// Left-aligned headers
+    Left,
+    /// Center-aligned headers
+    Center,
+    /// Center-aligned headers (British spelling)
+    Centre,
+    /// Right-aligned headers
+    Right,
+}
+
+impl From<ClapAlignment> for HeaderAlignment {
+    fn from(clap_align: ClapAlignment) -> Self {
+        match clap_align {
+            ClapAlignment::Left => HeaderAlignment::Left,
+            ClapAlignment::Center | ClapAlignment::Centre => HeaderAlignment::Center,
+            ClapAlignment::Right => HeaderAlignment::Right,
+        }
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "csvmd")]
@@ -32,7 +54,7 @@ struct Args {
 
     /// Header alignment: left, center, or right
     #[arg(long, default_value = "left")]
-    align: String,
+    align: ClapAlignment,
 }
 
 /// A wrapper around stdin that shows a spinner after a timeout if it's interactive
@@ -173,25 +195,11 @@ impl Read for InteractiveStdin {
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    // Parse alignment option
-    let header_alignment = match args.align.to_lowercase().as_str() {
-        "left" => HeaderAlignment::Left,
-        "center" | "centre" => HeaderAlignment::Center,
-        "right" => HeaderAlignment::Right,
-        _ => {
-            eprintln!(
-                "Error: Invalid alignment '{}'. Valid options are: left, center, right",
-                args.align
-            );
-            std::process::exit(1);
-        }
-    };
-
     let config = Config {
         has_headers: !args.no_headers,
         flexible: true,
         delimiter: args.delimiter as u8,
-        header_alignment,
+        header_alignment: args.align.into(),
     };
 
     if args.stream {
