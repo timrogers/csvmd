@@ -1,6 +1,6 @@
 //! CSV to Markdown table converter CLI tool.
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use csvmd::error::Result;
 use csvmd::{csv_to_markdown_streaming, Config, HeaderAlignment};
 use std::fs::File;
@@ -31,8 +31,8 @@ struct Args {
     stream: bool,
 
     /// Header alignment: left, center, or right
-    #[arg(long, default_value = "left")]
-    align: String,
+    #[arg(long, value_enum, default_value_t = AlignArg::Left)]
+    align: AlignArg,
 }
 
 /// A wrapper around stdin that shows a spinner after a timeout if it's interactive
@@ -173,18 +173,11 @@ impl Read for InteractiveStdin {
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    // Parse alignment option
-    let header_alignment = match args.align.to_lowercase().as_str() {
-        "left" => HeaderAlignment::Left,
-        "center" | "centre" => HeaderAlignment::Center,
-        "right" => HeaderAlignment::Right,
-        _ => {
-            eprintln!(
-                "Error: Invalid alignment '{}'. Valid options are: left, center, right",
-                args.align
-            );
-            std::process::exit(1);
-        }
+    // Map clap-validated value to HeaderAlignment
+    let header_alignment = match args.align {
+        AlignArg::Left => HeaderAlignment::Left,
+        AlignArg::Center => HeaderAlignment::Center,
+        AlignArg::Right => HeaderAlignment::Right,
     };
 
     let config = Config {
