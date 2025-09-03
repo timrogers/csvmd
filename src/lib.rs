@@ -29,7 +29,7 @@ pub mod error;
 use csv::ReaderBuilder;
 use error::Result;
 use std::fmt::Write as FmtWrite;
-use std::io::{Read, Write, Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom, Write};
 
 /// Header alignment options for Markdown tables.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
