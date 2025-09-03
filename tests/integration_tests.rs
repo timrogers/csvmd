@@ -276,7 +276,22 @@ fn test_cli_with_invalid_alignment() {
 
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("Invalid alignment 'invalid'"));
+
+    // With clap ValueEnum, clap handles validation and prints its own error.
+    // Assert on robust substrings rather than exact text to be compatible across versions/platforms.
+    let lowered = stderr.to_lowercase();
+    assert!(
+        lowered.contains("error") && lowered.contains("--align") &&
+        (lowered.contains("invalid value") || lowered.contains("invalid argument") || lowered.contains("unknown variant")),
+        "stderr did not contain expected clap error markers. stderr:\n{}",
+        stderr
+    );
+    // Ensure the possible values are mentioned somewhere
+    assert!(
+        lowered.contains("left") && lowered.contains("center") && lowered.contains("right"),
+        "stderr did not list expected possible values. stderr:\n{}",
+        stderr
+    );
 }
 
 #[test]
