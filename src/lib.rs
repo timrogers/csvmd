@@ -31,12 +31,17 @@ use error::Result;
 use std::fmt::Write as FmtWrite;
 use std::io::{Read, Write};
 
+#[cfg(feature = "cli")]
+use clap::ValueEnum;
+
 /// Header alignment options for Markdown tables.
+#[cfg_attr(feature = "cli", derive(ValueEnum))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HeaderAlignment {
     /// Left-aligned headers (default): `| --- |`
     Left,
     /// Center-aligned headers: `| :---: |`
+    #[cfg_attr(feature = "cli", value(alias = "centre"))]
     Center,
     /// Right-aligned headers: `| ---: |`
     Right,

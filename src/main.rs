@@ -1,6 +1,6 @@
 //! CSV to Markdown table converter CLI tool.
 
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use csvmd::error::Result;
 use csvmd::{csv_to_markdown_streaming, Config, HeaderAlignment};
 use std::fs::File;
@@ -8,16 +8,7 @@ use std::io::{self, IsTerminal, Read};
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::thread;
-use std::time::{Duration, Instant};
-
-#[derive(ValueEnum, Clone, Debug)]
-enum AlignArg {
-    Left,
-    #[value(alias("centre"))]
-    Center,
-    Right,
-}
-
+use std::time::{Duration, Instantnew
 #[derive(Parser)]
 #[command(name = "csvmd")]
 #[command(about = "Convert CSV to Markdown table")]
@@ -39,8 +30,8 @@ struct Args {
     stream: bool,
 
     /// Header alignment: left, center, or right
-    #[arg(long, value_enum, default_value_t = AlignArg::Left)]
-    align: AlignArg,
+    #[arg(long, value_enum, default_value_t = HeaderAlignment::Left)]
+    align: HeaderAlignment,
 }
 
 /// A wrapper around stdin that shows a spinner after a timeout if it's interactive
@@ -181,18 +172,11 @@ impl Read for InteractiveStdin {
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    // Parse alignment option via clap's ValueEnum
-    let header_alignment = match args.align {
-        AlignArg::Left => HeaderAlignment::Left,
-        AlignArg::Center => HeaderAlignment::Center,
-        AlignArg::Right => HeaderAlignment::Right,
-    };
-
     let config = Config {
         has_headers: !args.no_headers,
         flexible: true,
         delimiter: args.delimiter as u8,
-        header_alignment,
+        header_alignment: args.align,
     };
 
     if args.stream {
