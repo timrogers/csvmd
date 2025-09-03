@@ -1,5 +1,6 @@
 ---
 source: tests/integration_tests.rs
+assertion_line: 104
 expression: normalized_result
 ---
 Convert CSV to Markdown table
@@ -24,17 +25,18 @@ Options:
 
       --align <ALIGN>
           Header alignment: left, center, or right
-          
-          [default: left]
 
           Possible values:
           - left:   Left-aligned headers
           - center: Center-aligned headers
           - centre: Center-aligned headers (British spelling)
           - right:  Right-aligned headers
+          
+          [default: left]
 
   -h, --help
           Print help (see a summary with '-h')
 
   -V, --version
           Print version
+
