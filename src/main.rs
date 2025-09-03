@@ -16,7 +16,7 @@ enum ClapAlignment {
     Left,
     /// Center-aligned headers
     Center,
-    /// Center-aligned headers (British spelling)
+    /// Center-aligned headers (British spelling 🇬🇧)
     Centre,
     /// Right-aligned headers
     Right,
@@ -48,11 +48,11 @@ struct Args {
     #[arg(long)]
     no_headers: bool,
 
-    /// Use streaming mode for large files (writes output immediately)
+    /// Stream the input in and the output out, reducing memory usage for large inputs
     #[arg(long)]
     stream: bool,
 
-    /// Header alignment: left, center, or right
+    /// Customise the alignment of values within cells
     #[arg(long, default_value = "left")]
     align: ClapAlignment,
 }
