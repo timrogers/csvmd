@@ -276,7 +276,7 @@ fn test_cli_with_invalid_alignment() {
 
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("Invalid alignment 'invalid'"));
+    assert!(stderr.contains("invalid value 'invalid' for '--align <ALIGN>'"));
 }
 
 #[test]
