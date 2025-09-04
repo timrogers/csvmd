@@ -220,7 +220,7 @@ pub fn csv_to_markdown_streaming<R: Read, W: Write>(
 /// input into memory. It performs two passes by rewinding the reader between
 /// passes to compute the maximum column count and then write the output.
 pub fn csv_to_markdown_streaming_seekable<R: Read + Seek, W: Write>(
-    mut input: &mut R,
+    mut input: R,
     mut output: W,
     config: Config,
 ) -> Result<()> {

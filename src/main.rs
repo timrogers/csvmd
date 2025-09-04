@@ -207,8 +207,8 @@ fn main() -> Result<()> {
         match args.file {
             // For files, use seekable streaming to avoid buffering the entire input
             Some(path) => {
-                let mut file = File::open(path)?;
-                csvmd::csv_to_markdown_streaming_seekable(&mut file, io::stdout(), config)?;
+                let file = File::open(path)?;
+                csvmd::csv_to_markdown_streaming_seekable(file, io::stdout(), config)?;
             }
             // For stdin or non-seekable, fall back to buffered streaming
             None => {
