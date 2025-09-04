@@ -34,25 +34,25 @@ impl From<ClapAlignment> for HeaderAlignment {
 
 #[derive(Parser)]
 #[command(name = "csvmd")]
-#[command(about = "Convert CSV to Markdown table")]
+#[command(about = "Convert a CSV to a Markdown table, outputted to stdout")]
 #[command(version)]
 struct Args {
-    /// Input CSV file (if not provided, reads from stdin)
+    /// The path of the file to read - if not provided, reads from stdin
     file: Option<PathBuf>,
 
-    /// CSV delimiter character
+    /// The delimiter between columns
     #[arg(short, long, default_value = ",")]
     delimiter: char,
 
-    /// Treat first row as data, not headers
+    /// Treat the first row as data, not headers
     #[arg(long)]
     no_headers: bool,
 
-    /// Use streaming mode for large files (writes output immediately)
+    /// Enable streaming mode to improve performance for large inputs
     #[arg(long)]
     stream: bool,
 
-    /// Header alignment: left, center, or right
+    /// Customise the alignment of values within cells
     #[arg(long, default_value = "left")]
     align: ClapAlignment,
 }
