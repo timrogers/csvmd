@@ -203,13 +203,19 @@ fn main() -> Result<()> {
     };
 
     if args.stream {
-        // Streaming mode: process row-by-row
-        let input: Box<dyn Read> = match args.file {
-            Some(path) => Box::new(File::open(path)?),
-            None => Box::new(InteractiveStdin::new()),
-        };
-
-        csv_to_markdown_streaming(input, io::stdout(), config)?;
+        // Streaming mode
+        match args.file {
+            // For files, use seekable streaming to avoid buffering the entire input
+            Some(path) => {
+                let file = File::open(path)?;
+                csvmd::csv_to_markdown_streaming_seekable(file, io::stdout(), config)?;
+            }
+            // For stdin or non-seekable, fall back to buffered streaming
+            None => {
+                let input: Box<dyn Read> = Box::new(InteractiveStdin::new());
+                csv_to_markdown_streaming(input, io::stdout(), config)?;
+            }
+        }
     } else {
         // Standard mode: load all into memory then output
         let input: Box<dyn Read> = match args.file {

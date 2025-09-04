@@ -29,7 +29,7 @@ pub mod error;
 use csv::ReaderBuilder;
 use error::Result;
 use std::fmt::Write as FmtWrite;
-use std::io::{Read, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 
 /// Header alignment options for Markdown tables.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -204,6 +204,55 @@ pub fn csv_to_markdown_streaming<R: Read, W: Write>(
         write_table_row_to_writer(&mut output, &row, max_cols)?;
 
         // Add header separator after first row if configured
+        if first_row && config.has_headers {
+            write_header_separator_to_writer(&mut output, max_cols, config.header_alignment)?;
+            first_row = false;
+        }
+    }
+
+    output.flush()?;
+    Ok(())
+}
+
+/// Convert CSV data to Markdown and write directly to output using a seekable input.
+///
+/// For seekable inputs (e.g., files), this variant avoids buffering the entire
+/// input into memory. It performs two passes by rewinding the reader between
+/// passes to compute the maximum column count and then write the output.
+pub fn csv_to_markdown_streaming_seekable<R: Read + Seek, W: Write>(
+    mut input: R,
+    mut output: W,
+    config: Config,
+) -> Result<()> {
+    // First pass: determine max column count
+    input.seek(SeekFrom::Start(0))?;
+    let mut reader = ReaderBuilder::new()
+        .has_headers(false)
+        .flexible(config.flexible)
+        .delimiter(config.delimiter)
+        .from_reader(&mut input);
+
+    let mut max_cols = 0;
+    for result in reader.records() {
+        let record = result?;
+        max_cols = max_cols.max(record.len());
+    }
+
+    // Second pass: rewind and stream output with correct column count
+    drop(reader);
+    input.seek(SeekFrom::Start(0))?;
+    let mut reader = ReaderBuilder::new()
+        .has_headers(false)
+        .flexible(config.flexible)
+        .delimiter(config.delimiter)
+        .from_reader(&mut input);
+
+    let mut first_row = true;
+    for result in reader.records() {
+        let record = result?;
+        let row: Vec<String> = record.iter().map(escape_markdown_cell).collect();
+        write_table_row_to_writer(&mut output, &row, max_cols)?;
+
         if first_row && config.has_headers {
             write_header_separator_to_writer(&mut output, max_cols, config.header_alignment)?;
             first_row = false;
