@@ -19,8 +19,8 @@ Options:
       --no-headers
           Treat the first row as data, not headers
 
-      --stream
-          Enable streaming mode to improve performance for large inputs
+      --memory
+          Use memory mode instead of streaming (loads entire file into memory)
 
       --align <ALIGN>
           Customise the alignment of values within cells

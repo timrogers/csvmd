@@ -280,7 +280,7 @@ fn test_cli_with_invalid_alignment() {
 }
 
 #[test]
-fn test_cli_with_streaming_and_alignment() {
+fn test_cli_with_memory_and_alignment() {
     let mut temp_file = NamedTempFile::new().unwrap();
     writeln!(temp_file, "Name,Age").unwrap();
     writeln!(temp_file, "John,25").unwrap();
@@ -290,7 +290,7 @@ fn test_cli_with_streaming_and_alignment() {
         .args([
             "run",
             "--",
-            "--stream",
+            "--memory",
             "--align",
             "center",
             temp_file.path().to_str().unwrap(),
@@ -324,14 +324,14 @@ fn test_cli_with_invalid_utf8_file() {
 }
 
 #[test]
-fn test_cli_with_invalid_utf8_streaming_mode() {
+fn test_cli_with_invalid_utf8_memory_mode() {
     let mut temp_file = NamedTempFile::new().unwrap();
     // Write valid CSV header, then invalid UTF-8 bytes
     write!(temp_file, "Name,Age\nJohn,25\n").unwrap();
     temp_file.write_all(&[0x80, 0x81, 0x82]).unwrap();
 
     let output = Command::new("cargo")
-        .args(["run", "--", "--stream", temp_file.path().to_str().unwrap()])
+        .args(["run", "--", "--memory", temp_file.path().to_str().unwrap()])
         .output()
         .expect("Failed to execute command");
 
