@@ -48,9 +48,9 @@ struct Args {
     #[arg(long)]
     no_headers: bool,
 
-    /// Enable streaming mode to improve performance for large inputs
+    /// Use memory mode instead of streaming (loads entire file into memory)
     #[arg(long)]
-    stream: bool,
+    memory: bool,
 
     /// Customise the alignment of values within cells
     #[arg(long, default_value = "left")]
@@ -202,8 +202,17 @@ fn main() -> Result<()> {
         header_alignment: args.align.into(),
     };
 
-    if args.stream {
-        // Streaming mode
+    if args.memory {
+        // Memory mode: load all into memory then output
+        let input: Box<dyn Read> = match args.file {
+            Some(path) => Box::new(File::open(path)?),
+            None => Box::new(InteractiveStdin::new()),
+        };
+
+        let output = csvmd::csv_to_markdown(input, config)?;
+        print!("{}", output);
+    } else {
+        // Streaming mode (default)
         match args.file {
             // For files, use seekable streaming to avoid buffering the entire input
             Some(path) => {
@@ -216,15 +225,6 @@ fn main() -> Result<()> {
                 csv_to_markdown_streaming(input, io::stdout(), config)?;
             }
         }
-    } else {
-        // Standard mode: load all into memory then output
-        let input: Box<dyn Read> = match args.file {
-            Some(path) => Box::new(File::open(path)?),
-            None => Box::new(InteractiveStdin::new()),
-        };
-
-        let output = csvmd::csv_to_markdown(input, config)?;
-        print!("{}", output);
     }
 
     Ok(())
