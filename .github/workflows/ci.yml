@@ -25,32 +25,19 @@ jobs:
         restore-keys: |
           ${{ runner.OS }}-build-
 
-    - name: Install latest Rust nightly
-      uses: actions-rs/toolchain@v1
+    - name: Install latest stable Rust
+      uses: dtolnay/rust-toolchain@stable
       with:
-        profile: minimal
-        components: rustc, cargo, clippy, rustfmt
-        toolchain: nightly
-        override: true
-        target: ${{ matrix.job.target }}
+        components: rustfmt, clippy
 
     - name: Run cargo check
-      uses: actions-rs/cargo@v1
-      with:
-        command: check
-        args: --verbose
+      run: cargo check --verbose
 
     - name: Run cargo test
-      uses: actions-rs/cargo@v1
-      with:
-        command: test
-        args: --verbose
+      run: cargo test --verbose
 
     - name: Run cargo fmt
-      uses: actions-rs/cargo@v1
-      with:
-        command: fmt
-        args: --all -- --check
+      run: cargo fmt --all -- --check
   build:
     strategy:
       fail-fast: false
@@ -89,15 +76,17 @@ jobs:
     - name: Add $HOME/.cargo/bin to PATH (self-hosted runners only)
       run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
       if: matrix.job.runs_on == 'self-hosted'
-    - name: Use Rust 1.87.0 with target ${{ matrix.job.target }}
-      run: rustup override set 1.87.0-${{ matrix.job.target }}
+    - name: Install Rust stable with target ${{ matrix.job.target }}
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.job.target }}
     - uses: actions/checkout@v4
     - uses: Swatinem/rust-cache@v2
     - name: Build in release mode
       run: cargo build --release --target=${{ matrix.job.target }}
     - name: Sanitise Git ref for use in filenames
       id: sanitise_ref
-      run: echo "::set-output name=value::$(echo "${{ github.ref_name }}" | tr '/' '_')"
+      run: echo "value=$(echo "${{ github.ref_name }}" | tr '/' '_')" >> $GITHUB_OUTPUT
     - name: Rename Windows binary to use structured filename
       run: |
         cp target/${{ matrix.job.target }}/release/csvmd.exe csvmd_${{ steps.sanitise_ref.outputs.value }}_${{ matrix.job.binary_name }}
@@ -149,7 +138,7 @@ jobs:
     steps:
       - name: Sanitise Git ref for use in filenames
         id: sanitise_ref
-        run: echo "::set-output name=value::$(echo "${{ github.ref_name }}" | tr '/' '_')"
+        run: echo "value=$(echo "${{ github.ref_name }}" | tr '/' '_')" >> $GITHUB_OUTPUT
       - name: Download macOS amd64 binary
         uses: actions/download-artifact@v5
         with:
@@ -197,8 +186,8 @@ jobs:
     needs: build
     steps:
       - uses: actions/checkout@v4
-      - name: Use Rust 1.87.0
-        run: rustup override set 1.87.0
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install cargo-edit
         run: cargo install cargo-edit
@@ -217,7 +206,7 @@ jobs:
     steps:
       - name: Sanitise Git ref for use in filenames
         id: sanitise_ref
-        run: echo "::set-output name=value::$(echo "${{ github.ref_name }}" | tr '/' '_')"
+        run: echo "value=$(echo "${{ github.ref_name }}" | tr '/' '_')" >> $GITHUB_OUTPUT
       - uses: actions/download-artifact@v5
         with:
           name: csvmd_${{ steps.sanitise_ref.outputs.value }}_linux-amd64
@@ -255,8 +244,10 @@ jobs:
     if: startsWith(github.event.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
-      - name: Use Rust 1.87.0 with target x86_64-unknown-linux-gnu
-        run: rustup override set 1.87.0-x86_64-unknown-linux-gnu
+      - name: Install Rust stable with target x86_64-unknown-linux-gnu
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
       - uses: Swatinem/rust-cache@v2
       - name: Publish to Crates.io
         run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
