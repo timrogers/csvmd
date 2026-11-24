@@ -26,10 +26,9 @@
 
 pub mod error;
 
-use csv::ReaderBuilder;
+use csv::{ReaderBuilder, StringRecord};
 use error::Result;
-use std::fmt::Write as FmtWrite;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
 
 /// Header alignment options for Markdown tables.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,22 +101,18 @@ impl Default for Config {
 /// # Ok::<(), csvmd::error::CsvMdError>(())
 /// ```
 pub fn csv_to_markdown<R: Read>(input: R, config: Config) -> Result<String> {
-    let mut reader = ReaderBuilder::new()
-        .has_headers(false)
-        .flexible(config.flexible)
-        .delimiter(config.delimiter)
-        .from_reader(input);
+    let mut reader = new_reader(input, &config);
 
-    let mut records: Vec<Vec<String>> = Vec::new();
+    let mut records: Vec<StringRecord> = Vec::new();
     let mut max_cols = 0;
+    let mut total_bytes = 0;
 
     // First pass: collect all records and determine max column count
-    for result in reader.records() {
-        let record = result?;
-        let row: Vec<String> = record.iter().map(escape_markdown_cell).collect();
-
-        max_cols = max_cols.max(row.len());
-        records.push(row);
+    let mut record = StringRecord::new();
+    while reader.read_record(&mut record)? {
+        max_cols = max_cols.max(record.len());
+        total_bytes += record.as_slice().len();
+        records.push(record.clone());
     }
 
     if records.is_empty() {
@@ -125,16 +120,16 @@ pub fn csv_to_markdown<R: Read>(input: R, config: Config) -> Result<String> {
     }
 
     // Estimate output size to reduce allocations
-    let estimated_size = estimate_output_size(&records, max_cols);
+    let estimated_size = total_bytes + (max_cols * 4 + 2) * records.len() + max_cols * 6 + 100;
     let mut output = String::with_capacity(estimated_size);
 
     // Write the table
     for (i, record) in records.iter().enumerate() {
-        write_table_row(&mut output, record, max_cols)?;
+        write_table_row(&mut output, record, max_cols);
 
         // Add header separator after first row if configured
         if i == 0 && config.has_headers {
-            write_header_separator(&mut output, max_cols, config.header_alignment)?;
+            write_header_separator(&mut output, max_cols, config.header_alignment);
         }
     }
 
@@ -161,7 +156,7 @@ pub fn csv_to_markdown<R: Read>(input: R, config: Config) -> Result<String> {
 /// Returns `CsvMdError` if reading, parsing, or writing fails.
 pub fn csv_to_markdown_streaming<R: Read, W: Write>(
     mut input: R,
-    mut output: W,
+    output: W,
     config: Config,
 ) -> Result<()> {
     // First, we need to read the input to determine max columns
@@ -170,48 +165,10 @@ pub fn csv_to_markdown_streaming<R: Read, W: Write>(
     input.read_to_end(&mut buffer)?;
 
     // First pass: determine max column count
-    let max_cols = {
-        let cursor = std::io::Cursor::new(&buffer);
-        let mut reader = ReaderBuilder::new()
-            .has_headers(false)
-            .flexible(config.flexible)
-            .delimiter(config.delimiter)
-            .from_reader(cursor);
-
-        let mut max_cols = 0;
-        for result in reader.records() {
-            let record = result?;
-            max_cols = max_cols.max(record.len());
-        }
-        max_cols
-    };
+    let max_cols = count_max_cols(new_reader(&buffer[..], &config))?;
 
     // Second pass: stream output with correct column count
-    let cursor = std::io::Cursor::new(&buffer);
-    let mut reader = ReaderBuilder::new()
-        .has_headers(false)
-        .flexible(config.flexible)
-        .delimiter(config.delimiter)
-        .from_reader(cursor);
-
-    let mut first_row = true;
-
-    for result in reader.records() {
-        let record = result?;
-        let row: Vec<String> = record.iter().map(escape_markdown_cell).collect();
-
-        // Write the row with correct column count
-        write_table_row_to_writer(&mut output, &row, max_cols)?;
-
-        // Add header separator after first row if configured
-        if first_row && config.has_headers {
-            write_header_separator_to_writer(&mut output, max_cols, config.header_alignment)?;
-            first_row = false;
-        }
-    }
-
-    output.flush()?;
-    Ok(())
+    write_streaming(new_reader(&buffer[..], &config), output, max_cols, &config)
 }
 
 /// Convert CSV data to Markdown and write directly to output using a seekable input.
@@ -221,40 +178,57 @@ pub fn csv_to_markdown_streaming<R: Read, W: Write>(
 /// passes to compute the maximum column count and then write the output.
 pub fn csv_to_markdown_streaming_seekable<R: Read + Seek, W: Write>(
     mut input: R,
-    mut output: W,
+    output: W,
     config: Config,
 ) -> Result<()> {
     // First pass: determine max column count
     input.seek(SeekFrom::Start(0))?;
-    let mut reader = ReaderBuilder::new()
-        .has_headers(false)
-        .flexible(config.flexible)
-        .delimiter(config.delimiter)
-        .from_reader(&mut input);
-
-    let mut max_cols = 0;
-    for result in reader.records() {
-        let record = result?;
-        max_cols = max_cols.max(record.len());
-    }
+    let max_cols = count_max_cols(new_reader(&mut input, &config))?;
 
     // Second pass: rewind and stream output with correct column count
-    drop(reader);
     input.seek(SeekFrom::Start(0))?;
-    let mut reader = ReaderBuilder::new()
+    write_streaming(new_reader(&mut input, &config), output, max_cols, &config)
+}
+
+fn new_reader<R: Read>(input: R, config: &Config) -> csv::Reader<R> {
+    ReaderBuilder::new()
         .has_headers(false)
         .flexible(config.flexible)
         .delimiter(config.delimiter)
-        .from_reader(&mut input);
+        .from_reader(input)
+}
 
+fn count_max_cols<R: Read>(mut reader: csv::Reader<R>) -> Result<usize> {
+    let mut record = StringRecord::new();
+    let mut max_cols = 0;
+    while reader.read_record(&mut record)? {
+        max_cols = max_cols.max(record.len());
+    }
+    Ok(max_cols)
+}
+
+/// Stream rows to the writer, building each row in a reused buffer and writing
+/// through a `BufWriter` to avoid many small writes.
+fn write_streaming<R: Read, W: Write>(
+    mut reader: csv::Reader<R>,
+    output: W,
+    max_cols: usize,
+    config: &Config,
+) -> Result<()> {
+    let mut output = BufWriter::with_capacity(64 * 1024, output);
+    let mut line = String::new();
+    let mut record = StringRecord::new();
     let mut first_row = true;
-    for result in reader.records() {
-        let record = result?;
-        let row: Vec<String> = record.iter().map(escape_markdown_cell).collect();
-        write_table_row_to_writer(&mut output, &row, max_cols)?;
+
+    while reader.read_record(&mut record)? {
+        line.clear();
+        write_table_row(&mut line, &record, max_cols);
+        output.write_all(line.as_bytes())?;
 
         if first_row && config.has_headers {
-            write_header_separator_to_writer(&mut output, max_cols, config.header_alignment)?;
+            line.clear();
+            write_header_separator(&mut line, max_cols, config.header_alignment);
+            output.write_all(line.as_bytes())?;
             first_row = false;
         }
     }
@@ -263,55 +237,50 @@ pub fn csv_to_markdown_streaming_seekable<R: Read + Seek, W: Write>(
     Ok(())
 }
 
-/// Escape Markdown special characters in a CSV cell.
+/// Append a Markdown-escaped CSV cell to `out`.
 ///
 /// This function handles:
 /// - Pipe characters (`|`) → escaped as `\|`
 /// - Newlines (`\n`) → converted to `<br>` tags
 /// - Carriage returns (`\r`) → removed
+fn push_escaped_cell(out: &mut String, field: &str) {
+    let mut start = 0;
+    for (i, &b) in field.as_bytes().iter().enumerate() {
+        let replacement = match b {
+            b'|' => "\\|",
+            b'\n' => "<br>",
+            b'\r' => "",
+            _ => continue,
+        };
+        out.push_str(&field[start..i]);
+        out.push_str(replacement);
+        start = i + 1;
+    }
+    out.push_str(&field[start..]);
+}
+
+#[cfg(test)]
 fn escape_markdown_cell(field: &str) -> String {
-    field
-        .replace('|', "\\|")
-        .replace('\n', "<br>")
-        .replace('\r', "")
+    let mut out = String::new();
+    push_escaped_cell(&mut out, field);
+    out
 }
 
 /// Write a table row to a string buffer.
-fn write_table_row(output: &mut String, row: &[String], max_cols: usize) -> Result<()> {
+fn write_table_row(output: &mut String, row: &StringRecord, max_cols: usize) {
     output.push('|');
 
     for i in 0..max_cols {
-        let cell = row.get(i).map(String::as_str).unwrap_or("");
-        write!(output, " {} |", cell)?;
+        output.push(' ');
+        push_escaped_cell(output, row.get(i).unwrap_or(""));
+        output.push_str(" |");
     }
 
     output.push('\n');
-    Ok(())
-}
-
-/// Write a table row directly to a writer.
-fn write_table_row_to_writer<W: Write>(
-    output: &mut W,
-    row: &[String],
-    max_cols: usize,
-) -> Result<()> {
-    write!(output, "|")?;
-
-    for i in 0..max_cols {
-        let cell = row.get(i).map(String::as_str).unwrap_or("");
-        write!(output, " {} |", cell)?;
-    }
-
-    writeln!(output)?;
-    Ok(())
 }
 
 /// Write the header separator line to a string buffer.
-fn write_header_separator(
-    output: &mut String,
-    max_cols: usize,
-    alignment: HeaderAlignment,
-) -> Result<()> {
+fn write_header_separator(output: &mut String, max_cols: usize, alignment: HeaderAlignment) {
     output.push('|');
 
     let separator = match alignment {
@@ -325,42 +294,6 @@ fn write_header_separator(
     }
 
     output.push('\n');
-    Ok(())
-}
-
-/// Write the header separator line directly to a writer.
-fn write_header_separator_to_writer<W: Write>(
-    output: &mut W,
-    max_cols: usize,
-    alignment: HeaderAlignment,
-) -> Result<()> {
-    write!(output, "|")?;
-
-    let separator = match alignment {
-        HeaderAlignment::Left => " --- |",
-        HeaderAlignment::Center => " :---: |",
-        HeaderAlignment::Right => " ---: |",
-    };
-
-    for _ in 0..max_cols {
-        write!(output, "{}", separator)?;
-    }
-
-    writeln!(output)?;
-    Ok(())
-}
-
-/// Estimate the output size to pre-allocate string capacity.
-fn estimate_output_size(records: &[Vec<String>], max_cols: usize) -> usize {
-    let avg_cell_size = records
-        .iter()
-        .flat_map(|row| row.iter())
-        .map(|cell| cell.len())
-        .sum::<usize>()
-        / records.len().max(1);
-
-    // Rough estimate: (avg_cell_size + 3) * cols * rows + separators
-    (avg_cell_size + 3) * max_cols * records.len() + (max_cols * 6) + 100
 }
 
 #[cfg(test)]
